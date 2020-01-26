@@ -1,0 +1,7 @@
+include LICENSE
+include README.md
+recursive-include allennlp *
+recursive-include scripts *
+recursive-include training_config *.json
+recursive-include tutorials *
+recursive-exclude * __pycache__
