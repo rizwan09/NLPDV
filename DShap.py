@@ -18,6 +18,8 @@ import itertools
 import inspect
 import _pickle as pkl
 from sklearn.metrics import f1_score, roc_auc_score
+import pdb
+
 
 class DShap(object):
     
@@ -51,7 +53,9 @@ class DShap(object):
             
         if seed is not None:
             np.random.seed(seed)
-            tf.random.set_random_seed(seed)
+            # tf.random.set_random_seed(seed) #in older version
+            tf.random.set_seed(seed)
+
         self.problem = problem
         self.model_family = model_family
         self.metric = metric
@@ -61,7 +65,9 @@ class DShap(object):
             self.hidden_units = []
         if self.directory is not None:
             if overwrite and os.path.exists(directory):
-                tf.gfile.DeleteRecursively(directory)
+                # tf.gfile.DeleteRecursively(directory) #old version
+                print('deleting recursive all previous files')
+                tf.compat.v1.gfile.DeleteRecursively(directory)
             if not os.path.exists(directory):
                 os.makedirs(directory)  
                 os.makedirs(os.path.join(directory, 'weights'))
@@ -88,6 +94,7 @@ class DShap(object):
             sources = {i:np.where(sources==i)[0] for i in set(sources)}
         data_dir = os.path.join(self.directory, 'data.pkl')
         if os.path.exists(data_dir):
+            print('##### loading cached dataset #####')
             self._load_dataset(data_dir)
         else:
             self.X_heldout = X_test[:-num_test]
@@ -110,9 +117,10 @@ class DShap(object):
         n_sources = len(self.X) if self.sources is None else len(self.sources)
         n_points = len(self.X)
         self.tmc_number, self.g_number = self._which_parallel(self.directory)
-        self._create_results_placeholder(
-            self.directory, self.tmc_number, self.g_number,
-            n_points, n_sources, self.model_family)
+        if not os.path.exists(data_dir):
+            self._create_results_placeholder(
+                self.directory, self.tmc_number, self.g_number,
+                n_points, n_sources, self.model_family)
         
     def _create_results_placeholder(self, directory, tmc_number, g_number,
                                    n_points, n_sources, model_family):
@@ -137,6 +145,7 @@ class DShap(object):
         
     def _load_dataset(self, data_dir):
         '''Load the different sets of data if already exists.'''
+        print('loading sample weights: ')
         data_dic = pkl.load(open(data_dir, 'rb'))
         self.X_heldout = data_dic['X_heldout']
         self.y_heldout = data_dic['y_heldout']
@@ -243,6 +252,7 @@ class DShap(object):
                     self._g_shap(save_every, sources=self.sources)
                     self.vals_g = np.mean(self.mem_g, 0)
             if tmc_run:
+                # pdb.set_trace()
                 if error(self.mem_tmc) < err:
                     tmc_run = False
                 else:
@@ -262,6 +272,7 @@ class DShap(object):
         loo_dir = os.path.join(self.directory, 'loo.pkl')
         if not os.path.exists(loo_dir) or overwrite:
             pkl.dump({'loo': self.vals_loo}, open(loo_dir, 'wb'))
+
         tmc_dir = os.path.join(
             self.directory, 
             'mem_tmc_{}.pkl'.format(self.tmc_number.zfill(4))
@@ -273,7 +284,7 @@ class DShap(object):
         pkl.dump({'mem_tmc': self.mem_tmc, 'idxs_tmc': self.idxs_tmc}, 
                  open(tmc_dir, 'wb'))
         pkl.dump({'mem_g': self.mem_g, 'idxs_g': self.idxs_g}, 
-                 open(g_dir, 'wb'))  
+                 open(g_dir, 'wb'))
         
     def _tmc_shap(self, iterations, tolerance=None, sources=None):
         """Runs TMC-Shapley algorithm.
@@ -551,16 +562,16 @@ class DShap(object):
             using the two algorithms. (If applicable)
         """
         tmc_results = self._merge_parallel_results('tmc', max_samples)
-        self.marginals_tmc, self.indexes_tmc, self.values_tmc = tmc_results
+        self.vals_tmc, self.idxs_tmc, self.vals_tmc = tmc_results
         if self.model_family not in ['logistic', 'NN']:
             return
         g_results = self._merge_parallel_results('g', max_samples)
-        self.marginals_g, self.indexes_g, self.values_g = g_results
-    
-    def performance_plots(self, vals, name=None, 
+        self.mem_g, self.idxs_g, self.vals_g = g_results
+
+    def performance_plots(self, vals, name=None,
                           num_plot_markers=20, sources=None):
         """Plots the effect of removing valuable points.
-        
+
         Args:
             vals: A list of different valuations of data points each
                  in the format of an array in the same length of the data.
@@ -569,58 +580,185 @@ class DShap(object):
             sources: If values are for sources of data points rather than
                    individual points. In the format of an assignment array
                    or dict.
-                   
+
         Returns:
             Plots showing the change in performance as points are removed
             from most valuable to least.
         """
-        plt.rcParams['figure.figsize'] = 8,8
+        plt.rcParams['figure.figsize'] = 8, 8
         plt.rcParams['font.size'] = 25
         plt.xlabel('Fraction of train data removed (%)')
         plt.ylabel('Prediction accuracy (%)', fontsize=20)
         if not isinstance(vals, list) and not isinstance(vals, tuple):
             vals = [vals]
         if sources is None:
-            sources = {i:np.array([i]) for i in range(len(self.X))}
+            sources = {i: np.array([i]) for i in range(len(self.X))}
         elif not isinstance(sources, dict):
-            sources = {i:np.where(sources==i)[0] for i in set(sources)}
-        vals_sources = [np.array([np.sum(val[sources[i]]) 
+            sources = {i: np.where(sources == i)[0] for i in set(sources)}
+        vals_sources = [np.array([np.sum(val[sources[i]])
                                   for i in range(len(sources.keys()))])
-                  for val in vals]
+                        for val in vals] #([TMC_shapley, LOO_vals, .. ] x train_size)
         if len(sources.keys()) < num_plot_markers:
             num_plot_markers = len(sources.keys()) - 1
         plot_points = np.arange(
-            0, 
+            0,
             max(len(sources.keys()) - 10, num_plot_markers),
-            max(len(sources.keys())//num_plot_markers, 1)
+            max(len(sources.keys()) // num_plot_markers, 1)
         )
         perfs = [self._portion_performance(
             np.argsort(vals_source)[::-1], plot_points, sources=sources)
-                 for vals_source in vals_sources]
+            for vals_source in vals_sources]
         rnd = np.mean([self._portion_performance(
             np.random.permutation(np.argsort(vals_sources[0])[::-1]),
             plot_points, sources=sources) for _ in range(10)], 0)
-        plt.plot(plot_points/len(self.X) * 100, perfs[0] * 100, 
+        plt.plot(plot_points / len(self.X) * 100, perfs[0] * 100,
                  '-', lw=5, ms=10, color='b')
-        if len(vals)==3:
-            plt.plot(plot_points/len(self.X) * 100, perfs[1] * 100, 
+        if len(vals) == 3:
+            plt.plot(plot_points / len(self.X) * 100, perfs[1] * 100,
                      '--', lw=5, ms=10, color='orange')
             legends = ['TMC-Shapley ', 'G-Shapley ', 'LOO', 'Random']
-        elif len(vals)==2:
+        elif len(vals) == 2:
             legends = ['TMC-Shapley ', 'LOO', 'Random']
         else:
             legends = ['TMC-Shapley ', 'Random']
-        plt.plot(plot_points/len(self.X) * 100, perfs[-1] * 100, 
+        plt.plot(plot_points / len(self.X) * 100, perfs[-1] * 100,
                  '-.', lw=5, ms=10, color='g')
-        plt.plot(plot_points/len(self.X) * 100, rnd * 100, 
-                 ':', lw=5, ms=10, color='r')    
+        plt.plot(plot_points / len(self.X) * 100, rnd * 100,
+                 ':', lw=5, ms=10, color='r')
         plt.legend(legends)
         if self.directory is not None and name is not None:
             plt.savefig(os.path.join(
-                self.directory, 'plots', '{}.png'.format(name)),
-                        bbox_inches = 'tight')
+                self.directory, 'plots', '{}.png'.format(name+'_removing_')),
+                bbox_inches='tight')
             plt.close()
-            
+
+
+    def performance_plots_adding(self, vals, name=None,
+                          num_plot_markers=20, sources=None):
+        """Plots the effect of removing valuable points.
+
+        Args:
+            vals: A list of different valuations of data points each
+                 in the format of an array in the same length of the data.
+            name: Name of the saved plot if not None.
+            num_plot_markers: number of points in each plot.
+            sources: If values are for sources of data points rather than
+                   individual points. In the format of an assignment array
+                   or dict.
+
+        Returns:
+            Plots showing the change in performance as points are removed
+            from most valuable to least.
+        """
+        plt.rcParams['figure.figsize'] = 8, 8
+        plt.rcParams['font.size'] = 25
+        plt.xlabel('Fraction of train data added (%)')
+        plt.ylabel('Prediction accuracy (%)', fontsize=20)
+        if not isinstance(vals, list) and not isinstance(vals, tuple):
+            vals = [vals]
+        if sources is None:
+            sources = {i: np.array([i]) for i in range(len(self.X))}
+        elif not isinstance(sources, dict):
+            sources = {i: np.where(sources == i)[0] for i in set(sources)}
+        vals_sources = [np.array([np.sum(val[sources[i]])
+                                  for i in range(len(sources.keys()))])
+                        for val in vals]  # ([TMC_shapley, LOO_vals, .. ] x train_size)
+
+        if len(sources.keys()) < num_plot_markers:
+            num_plot_markers = len(sources.keys()) - 1
+        plot_points = np.arange(
+            0,
+            max(len(sources.keys()) - 10, num_plot_markers),
+            max(len(sources.keys()) // num_plot_markers, 1)
+        )
+        perfs = [self._portion_performance_addition(
+            np.argsort(vals_source)[::-1], plot_points, sources=sources)
+            for vals_source in vals_sources]
+        rnd = np.mean([self._portion_performance_addition(
+            np.random.permutation(np.argsort(vals_sources[0])[::-1]),
+            plot_points, sources=sources) for _ in range(10)], 0)
+        plt.plot(plot_points / len(self.X) * 100, perfs[0] * 100,
+                 '-', lw=5, ms=10, color='b')
+        if len(vals) == 3:
+            plt.plot(plot_points / len(self.X) * 100, perfs[1] * 100,
+                     '--', lw=5, ms=10, color='orange')
+            legends = ['TMC-Shapley ', 'G-Shapley ', 'LOO', 'Random']
+        elif len(vals) == 2:
+            legends = ['TMC-Shapley ', 'LOO', 'Random']
+        else:
+            legends = ['TMC-Shapley ', 'Random']
+        plt.plot(plot_points / len(self.X) * 100, perfs[-1] * 100,
+                 '-.', lw=5, ms=10, color='g')
+        plt.plot(plot_points / len(self.X) * 100, rnd * 100,
+                 ':', lw=5, ms=10, color='r')
+        plt.legend(legends)
+        if self.directory is not None and name is not None:
+            plt.savefig(os.path.join(
+                self.directory, 'plots', '{}.png'.format(name + '_adding_')),
+                bbox_inches='tight')
+            plt.close()
+
+    def shapley_value_plots(self, vals, name=None,
+                          num_plot_markers=20, sources=None):
+        """Plots the effect of removing valuable points.
+
+        Args:
+            vals: A list of different valuations of data points each
+                 in the format of an array in the same length of the data.
+            name: Name of the saved plot if not None.
+            num_plot_markers: number of points in each plot.
+            sources: If values are for sources of data points rather than
+                   individual points. In the format of an assignment array
+                   or dict.
+
+        Returns:
+            Plots showing the change in performance as points are removed
+            from most valuable to least.
+        """
+        plt.rcParams['figure.figsize'] = 25, 25
+        plt.rcParams['font.size'] = 25
+        plt.xlabel('Fraction of train data added (%)')
+        plt.ylabel('Prediction accuracy (%)', fontsize=20)
+        if not isinstance(vals, list) and not isinstance(vals, tuple):
+            vals = [vals]
+        if sources is None:
+            sources = {i: np.array([i]) for i in range(len(self.X))}
+        elif not isinstance(sources, dict):
+            sources = {i: np.where(sources == i)[0] for i in set(sources)}
+        vals_sources = [np.array([np.sum(val[sources[i]])
+                                  for i in range(len(sources.keys()))])
+                        for val in vals]  # (['TMC-Shapley ', 'G-Shapley ', 'LOO'] x train_size)
+        if isinstance(num_plot_markers, str):
+            num_plot_markers = len(sources.keys())
+        elif len(sources.keys()) < num_plot_markers:
+            num_plot_markers = len(sources.keys())
+        plot_points = np.arange(
+            0,
+            max(len(sources.keys()) - 1, num_plot_markers),
+            max(len(sources.keys()) // num_plot_markers, 1)
+        )
+
+
+        plt.plot(plot_points / len(self.X) * 100, vals_sources[0] * 100,
+                 '-', lw=5, ms=10, color='b')
+        if len(vals) == 3:
+            plt.plot(plot_points / len(self.X) * 100, vals_sources[1] * 100,
+                     '--', lw=5, ms=10, color='orange')
+            legends = ['TMC-Shapley ', 'G-Shapley ', 'LOO']
+        elif len(vals) == 2:
+            legends = ['TMC-Shapley ', 'LOO']
+        else:
+            legends = ['TMC-Shapley ']
+        plt.plot(plot_points / len(self.X) * 100, vals_sources[-1] * 100,
+                 '-.', lw=5, ms=10, color='g')
+
+        plt.legend(legends)
+        if self.directory is not None and name is not None:
+            plt.savefig(os.path.join(
+                self.directory, 'plots', '{}.png'.format(name + '_shapley_values_')),
+                bbox_inches='tight')
+            plt.close()
+
     def _portion_performance(self, idxs, plot_points, sources=None):
         """Given a set of indexes, starts removing points from 
         the first elemnt and evaluates the new model after
@@ -656,3 +794,44 @@ class DShap(object):
                 else:
                     scores.append(init_score)
         return np.array(scores)[::-1]
+
+
+    def _portion_performance_addition(self, idxs, plot_points, sources=None):
+        """Given a set of indexes, starts removing points from
+        the first elemnt and evaluates the new model after
+        removing each point."""
+        # pdb.set_trace()
+        if sources is None:
+            sources = {i:np.array([i]) for i in range(len(self.X))}
+        elif not isinstance(sources, dict):
+            sources = {i:np.where(sources==i)[0] for i in set(sources)}
+        scores = []
+        init_score = self.random_score
+
+        for i in range(0,len(plot_points),1):
+
+            keep_idxs = np.concatenate([sources[idx] for idx
+                                        in idxs[:plot_points[i] +1 ]], -1)
+            # print('keeping idx: ', keep_idxs)
+            X_batch, y_batch = self.X[keep_idxs], self.y[keep_idxs]
+            if self.sample_weight is not None:
+                sample_weight_batch = self.sample_weight[keep_idxs]
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                if (self.is_regression
+                    or len(set(y_batch)) == len(set(self.y_test))):
+                    self.restart_model()
+                    if self.sample_weight is None:
+                        self.model.fit(X_batch, y_batch)
+                    else:
+                        self.model.fit(X_batch, y_batch,
+                                      sample_weight=sample_weight_batch)
+                    scores.append(self.value(
+                        self.model,
+                        metric=self.metric,
+                        X=self.X_heldout,
+                        y=self.y_heldout
+                    ))
+                else:
+                    scores.append(init_score)
+        return np.array(scores)

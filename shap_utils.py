@@ -23,14 +23,17 @@ from sklearn.metrics import roc_auc_score, f1_score
 import warnings
 import tensorflow as tf
 import matplotlib.pyplot as plt
-        
-def convergence_plots(marginals):
+import  pdb
+
+
+def convergence_plots(marginals, type='tmc', directory = './tmp/plots'):
     
     plt.rcParams['figure.figsize'] = 15,15
     for i, idx in enumerate(np.arange(min(25, marginals.shape[-1]))):
         plt.subplot(5,5,i+1)
         plt.plot(np.cumsum(marginals[:, idx])/np.arange(1, len(marginals)+1))    
-        
+    plt.savefig(directory+'/convergence_plots_'+type+'.png', bbox_inches = 'tight')
+    plt.close()
     
 def is_integer(array):
     return (np.equal(np.mod(array, 1), 0).mean()==1)
@@ -42,8 +45,7 @@ def is_fitted(model):
 
 
 def return_model(mode, **kwargs):
-    
-    
+
     if inspect.isclass(mode):
         assert getattr(mode, 'fit', None) is not None, 'Custom model family should have a fit() method'
         model = mode(**kwargs)
@@ -282,8 +284,8 @@ def error(mem):
     
     if len(mem) < 100:
         return 1.0
-    all_vals = (np.cumsum(mem, 0)/np.reshape(np.arange(1, len(mem)+1), (-1,1)))[-100:]
-    errors = np.mean(np.abs(all_vals[-100:] - all_vals[-1:])/(np.abs(all_vals[-1:]) + 1e-12), -1)
+    all_vals = (np.cumsum(mem, 0)/np.reshape(np.arange(1, len(mem)+1), (-1,1)))[-100:] #(100 last iterations, train size)
+    errors = np.mean(np.abs(all_vals[-100:] - all_vals[-1:])/(np.abs(all_vals[-1:]) + 1e-12), -1) #(100 last iterations)
     return np.max(errors)
 
 def my_accuracy_score(clf, X, y):
