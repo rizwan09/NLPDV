@@ -51,9 +51,9 @@ dshap = DShap(X, y, X_test, y_test, num_test,
               sample_weight=None,
               model_family=model,
               metric='accuracy',
-              overwrite=False,
+              overwrite=True,
               directory=directory, seed=0)
-# dshap.run(100, 0.1, g_run=False)
+dshap.run(100, 0.1, g_run=False)
 
 # dshap = DShap(X, y, X_test, y_test, num_test,
 #               sources=None,
@@ -76,12 +76,12 @@ dshap = DShap(X, y, X_test, y_test, num_test,
 
 
 
-
-print("######## Merging Results ###########")
-dshap.merge_results()
-
-# pdb.set_trace()
-print("######## Converging Plots Results ###########")
+#
+# print("######## Merging Results ###########")
+# dshap.merge_results()
+#
+# # pdb.set_trace()
+# print("######## Converging Plots Results ###########")
 #%%
 
 # convergence_plots(dshap.marginals_tmc, type='tmc', directory=directory+'/plots')
@@ -94,13 +94,14 @@ print("######## Converging Plots Results ###########")
 
 # Now let's see the effect of removing high valuen points
 
-print("######## Performance Plots Results ###########")
-dshap.performance_plots([dshap.vals_tmc, dshap.vals_loo], num_plot_markers=20,
-                       sources=dshap.sources, name='synthetic')
+# print("######## Performance Plots Results ###########")
+# dshap.performance_plots([dshap.vals_tmc, dshap.vals_loo], num_plot_markers=20,
+#                        sources=dshap.sources, name='synthetic')
+#
+# dshap.performance_plots_adding([dshap.vals_tmc, dshap.vals_loo], num_plot_markers=20,
+#                        sources=dshap.sources, name='synthetic')
+#
+# dshap.shapley_value_plots([dshap.vals_tmc, dshap.vals_loo], num_plot_markers='max',
+#                        sources=dshap.sources, name='synthetic')
 
-dshap.performance_plots_adding([dshap.vals_tmc, dshap.vals_loo], num_plot_markers=20,
-                       sources=dshap.sources, name='synthetic')
-
-dshap.shapley_value_plots([dshap.vals_tmc, dshap.vals_loo], num_plot_markers='max',
-                       sources=dshap.sources, name='synthetic')
 

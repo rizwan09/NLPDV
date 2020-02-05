@@ -117,6 +117,10 @@ class DShap(object):
         n_sources = len(self.X) if self.sources is None else len(self.sources)
         n_points = len(self.X)
         self.tmc_number, self.g_number = self._which_parallel(self.directory)
+        self.mem_tmc = np.zeros((0, n_points))
+        self.mem_g = np.zeros((0, n_points))
+        self.idxs_tmc = np.zeros((0, n_sources), int)
+        self.idxs_g = np.zeros((0, n_sources), int)
         if not os.path.exists(data_dir):
             self._create_results_placeholder(
                 self.directory, self.tmc_number, self.g_number,
@@ -132,10 +136,6 @@ class DShap(object):
             directory, 
             'mem_g_{}.pkl'.format(g_number.zfill(4))
         )
-        self.mem_tmc = np.zeros((0, n_points))
-        self.mem_g = np.zeros((0, n_points))
-        self.idxs_tmc = np.zeros((0, n_sources), int)
-        self.idxs_g = np.zeros((0, n_sources), int)
         pkl.dump({'mem_tmc': self.mem_tmc, 'idxs_tmc': self.idxs_tmc}, 
                  open(tmc_dir, 'wb'))
         if model_family not in ['logistic', 'NN']:
@@ -256,12 +256,16 @@ class DShap(object):
                 if error(self.mem_tmc) < err:
                     tmc_run = False
                 else:
+                    #sets self.mem_tmc (save_every or #iterations x train_size)
                     self._tmc_shap(
                         save_every, 
                         tolerance=tolerance, 
                         sources=self.sources
                     )
+                    pdb.set_trace()
+                    # sets self.vals_tmc (train_size,) 1d array
                     self.vals_tmc = np.mean(self.mem_tmc, 0)
+
             if self.directory is not None:
                 self.save_results()
             
@@ -301,12 +305,13 @@ class DShap(object):
         elif not isinstance(sources, dict):
             sources = {i: np.where(sources == i)[0] for i in set(sources)}
         model = self.model
+
         try:
             self.mean_score
         except:
             self._tol_mean_score()
         if tolerance is None:
-            tolerance = self.tolerance         
+            tolerance = self.tol
         marginals, idxs = [], []
         for iteration in range(iterations):
             if 10*(iteration+1)/iterations % 1 == 0:
@@ -396,7 +401,6 @@ class DShap(object):
         return marginal_contribs, idxs
     
     def restart_model(self):
-        
         try:
             self.model = clone(self.model)
         except:
@@ -562,7 +566,7 @@ class DShap(object):
             using the two algorithms. (If applicable)
         """
         tmc_results = self._merge_parallel_results('tmc', max_samples)
-        self.vals_tmc, self.idxs_tmc, self.vals_tmc = tmc_results
+        self.mem_tmc, self.idxs_tmc, self.vals_tmc = tmc_results
         if self.model_family not in ['logistic', 'NN']:
             return
         g_results = self._merge_parallel_results('g', max_samples)
@@ -835,3 +839,4 @@ class DShap(object):
                 else:
                     scores.append(init_score)
         return np.array(scores)
+

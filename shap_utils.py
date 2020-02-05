@@ -281,7 +281,7 @@ def early_stopping(marginals, idxs, stopping):
     return np.mean(stopped_marginals, 0)
 
 def error(mem):
-    
+
     if len(mem) < 100:
         return 1.0
     all_vals = (np.cumsum(mem, 0)/np.reshape(np.arange(1, len(mem)+1), (-1,1)))[-100:] #(100 last iterations, train size)
@@ -313,4 +313,4 @@ def my_xe_score(clf, X, y):
     true_probs = probs[np.arange(len(y)), y]
     true_log_probs = np.log(np.clip(true_probs, 1e-12, None))
     return np.mean(true_log_probs)
-    
+
