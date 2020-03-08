@@ -1,4 +1,5 @@
 # NLPDV
+
 ### NOTE
 
 - We perform efficient tranfer learning using Data Shapley method. 
@@ -25,7 +26,5 @@ $ python script_run_sglue.py
 ### Results
 
 [Google Spreadsheet](https://docs.google.com/spreadsheets/d/1SE5wuhJtb070C--nbBrMWaj8JI0wwk0v2EiIqPMOfc4/edit?usp=sharing)
-
-
 
 
