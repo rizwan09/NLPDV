@@ -724,7 +724,7 @@ def main():
             global_step, tr_loss = train(args, train_dataset, model, tokenizer)
             logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
-            output_eval_file = os.path.join(args.output_dir, "training_results.txt")
+            output_eval_file = os.path.join(args.output_dir, "training_results"+str(args.seed)+".txt")
             with open(output_eval_file, "w") as writer:
                 logger.info("***** Writig Training dataset size  {} *****")
                 logger.info("%s = %s\n" % ('n_points', n_train_points))
