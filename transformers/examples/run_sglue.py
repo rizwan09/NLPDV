@@ -71,9 +71,9 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 from transformers import glue_compute_metrics as compute_metrics
-from transformers import glue_convert_examples_to_features as convert_examples_to_features
-from transformers import glue_output_modes as output_modes
-from transformers import glue_processors as processors
+from transformers import sglue_convert_examples_to_features as convert_examples_to_features
+from transformers import sglue_output_modes as output_modes
+from transformers import sglue_processors as processors
 
 import pdb
 
@@ -113,6 +113,7 @@ MODEL_CLASSES = {
     "xlmroberta": (XLMRobertaConfig, XLMRobertaForSequenceClassification, XLMRobertaTokenizer),
     "flaubert": (FlaubertConfig, FlaubertForSequenceClassification, FlaubertTokenizer),
 }
+
 
 
 def set_seed(args):
@@ -308,14 +309,14 @@ def train(args, train_dataset, model, tokenizer):
     return global_step, tr_loss / global_step
 
 
-def evaluate(args, model, tokenizer, prefix=""):
+def evaluate(args, model, tokenizer, prefix="", is_binary=True):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
-    eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli"  else (args.task_name,)
-    eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM") if args.task_name == "mnli" else (args.output_dir,)
+    eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli" and not is_binary  else (args.task_name,)
+    eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM") if args.task_name == "mnli" and not is_binary else (args.output_dir,)
 
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
-        eval_dataset, random_init_result, n_points = load_and_cache_examples(args, eval_task, tokenizer, evaluate=True)
+        eval_dataset, random_init_result, n_points, unique_labels = load_and_cache_examples(args, eval_task, tokenizer, evaluate=True)
 
         if not os.path.exists(eval_output_dir) and args.local_rank in [-1, 0]:
             os.makedirs(eval_output_dir)
@@ -388,7 +389,8 @@ def evaluate(args, model, tokenizer, prefix=""):
     return results
 
 
-def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=None):
+def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2):
+    args.data_dir = args.glue_dir+task.upper()
     if args.local_rank not in [-1, 0] and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
 
@@ -441,12 +443,12 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=No
     if args.data_size:
         print(f'originial data size: {len(features)} truncated to {args.data_size}', flush=True)
         features = features[:args.data_size]
-    if args.indices_to_delete_file_path and not evaluate:
-        with open(args.indices_to_delete_file_path, "r") as writer:
-            print("***** reading ids to remove *****", flush=True)
-            data = writer.read().replace('\n', '').strip().split()
-            ids = np.array([ int(i) for i in data])
-        features = np.delete(np.array(features), ids, axis=0)
+    # if args.indices_to_delete_file_path and not evaluate:
+    #     with open(args.indices_to_delete_file_path, "r") as reader:
+    #         print("***** reading ids to remove *****", flush=True)
+    #         data = reader.read().replace('\n', '').strip().split()
+    #         ids = np.array([ int(i) for i in data])
+    #     features = np.delete(np.array(features), ids, axis=0)
 
     # Convert to Tensors and build dataset
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
@@ -466,10 +468,10 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=No
         random_init_result = max(all_labels.bincount().float()/ n_points).numpy()
         logger.info("=============================================================================")
         logger.info("random_init_result %s", str(random_init_result))
-    if not num_labels or all_labels.unique().shape[0] == num_labels:
-        return dataset, random_init_result, all_labels.shape[0]
-    else:
-        return None, None, None
+        logger.info("=============================================================================")
+
+    return dataset, random_init_result, all_labels.shape[0],  all_labels.unique()
+
 
 
 def main():
@@ -481,6 +483,13 @@ def main():
         default=None,
         type=str,
         required=True,
+        help="The input data dir. Should contain the .tsv files (or other data files) for the task.",
+    )
+    parser.add_argument(
+        "--glue_dir",
+        default=None,
+        type=str,
+        required=False,
         help="The input data dir. Should contain the .tsv files (or other data files) for the task.",
     )
     parser.add_argument(
@@ -571,8 +580,8 @@ def main():
     )
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
 
-    parser.add_argument("--logging_steps", type=int, default=500, help="Log every X updates steps.")
-    parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every X updates steps.")
+    parser.add_argument("--logging_steps", type=int, default=50000, help="Log every X updates steps.")
+    parser.add_argument("--save_steps", type=int, default=50000, help="Save checkpoint every X updates steps.")
     parser.add_argument(
         "--eval_all_checkpoints",
         action="store_true",
@@ -608,6 +617,10 @@ def main():
     )
     parser.add_argument(
         "--indices_to_delete_file_path", default=None, type=str,
+        help="File path where the ids are to delete",
+    )
+    parser.add_argument(
+        "--domain_to_delete_file_path", default=None, type=str,
         help="File path where the ids are to delete",
     )
     parser.add_argument(
@@ -679,6 +692,7 @@ def main():
 
     # Prepare GLUE task
     args.task_name = args.task_name.lower()
+    args.glue_dir = args.data_dir
     if args.task_name not in processors:
         raise ValueError("Task not found: %s" % (args.task_name))
     processor = processors[args.task_name]()
@@ -719,12 +733,40 @@ def main():
 
     # Training
     if args.do_train:
-        train_dataset, random_init_result, n_train_points = load_and_cache_examples(args, args.task_name, tokenizer, evaluate=False, num_labels=num_labels)
-        if train_dataset:
+        ALL_BINARY_TASKS = ["snli", "mnli", "qqp", "qnli"]
+        ALL_BINARY_TASKS.remove(args.task_name)
+        logger.info(" ALL_BINARY_TASKS = %s, task = %s args.indices_to_delete_file_path = %s", ALL_BINARY_TASKS, args.task_name, args.indices_to_delete_file_path)
+        # logger.info(" not evaluate = %s args.indices_to_delete_file_path and not evaluate=%s", not evaluate, args.indices_to_delete_file_path and not evaluate)
+        # pdb.set_trace()
+        if args.indices_to_delete_file_path:
+            with open(args.indices_to_delete_file_path, "r") as reader:
+                print("***** reading ids to remove *****", flush=True)
+                data = reader.read().replace('\n', '').strip().split()
+                ids = np.array([int(i) for i in data])
+                logger.info(" Data = %s, ids = %s", data, str(ids))
+                ALL_BINARY_TASKS = np.delete(np.array(ALL_BINARY_TASKS), ids, axis=0)
+                logger.info(" After delete ALL_BINARY_TASKS = %s", ALL_BINARY_TASKS)
+
+        if len(ALL_BINARY_TASKS) > 0:
+            train_dataset, random_init_result, n_train_points, unique_labels = \
+                load_and_cache_examples(args, ALL_BINARY_TASKS[0], tokenizer, evaluate=False)
+
+        for task in ALL_BINARY_TASKS[1:]:
+            train_dataset2, random_init_result2, n_train_points2, unique_labels2 = \
+                load_and_cache_examples(args, task, tokenizer, evaluate=False)
+            train_dataset += train_dataset2
+            n_train_points += n_train_points2
+            unique_labels += unique_labels2
+
+        output_eval_file = os.path.join(args.output_dir, '', "eval_results.txt")
+        with open(output_eval_file, "w") as writer:
+            logger.info("***** Creating Empty Eval results file *****")
+
+        if unique_labels.unique().shape[0] == 2:
             global_step, tr_loss = train(args, train_dataset, model, tokenizer)
             logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
-            output_eval_file = os.path.join(args.output_dir, "training_results"+str(args.seed)+".txt")
+            output_eval_file = os.path.join(args.output_dir, "training_results" + ".txt")
             with open(output_eval_file, "w") as writer:
                 logger.info("***** Writig Training dataset size  {} *****")
                 logger.info("%s = %s\n" % ('n_points', n_train_points))
@@ -734,6 +776,9 @@ def main():
             with open(output_eval_file, "w") as writer:
                 logger.info("%s = None\n" % ('n_points Not Valid'))
                 writer.write("%s = %s\n" % ('n_points', "None"))
+
+
+
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0) and train_dataset:
         # Create output directory if needed
@@ -752,10 +797,6 @@ def main():
         # Good practice: save your training arguments together with the trained model
         torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
 
-        # Load a trained model and vocabulary that you have fine-tuned
-        model = model_class.from_pretrained(args.output_dir)
-        tokenizer = tokenizer_class.from_pretrained(args.output_dir)
-        model.to(args.device)
 
     # Evaluation
     results = {}
@@ -778,12 +819,6 @@ def main():
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
             results.update(result)
 
-
-    # ### Data Shapley Value Computation #####
-    #
-    # #### Data Shapley Value Computation #####
-
-
     return results
 
 
@@ -792,4 +827,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

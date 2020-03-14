@@ -16,7 +16,7 @@ from tqdm import trange, tqdm
 # Model params
 GLUE_DIR='/home/rizwan/NLPDV/glue/'
 run_file= './examples/run_sglue.py'
-run_file= './examples/data_valuation.py'
+# run_file= './examples/data_valuation.py'
 model_type = 'bert'
 train_model_name_or_path= 'bert-large-uncased-whole-word-masking'
 do_lower_case = True
@@ -39,13 +39,13 @@ CUDA_VISIBLE_DEVICES = [0,1,2,3,4,5,6,7]
 #______________________________________NLPDV____________________________________
 
 # Debug data size
-train_data_size = 100
-eval_data_size = 100
+train_data_size = 10000
+eval_data_size = 2000
 cluster_size = 10
 cluster_num = train_data_size//cluster_size
 # Seed
-seed = 43# 9, 109 for nlp9, 42,43 for nlp 10,
-max_iter = 100
+seed = 42# 9, 109 for nlp9, 42,43 for nlp 10,
+max_iter = 4
 save_every = 1
 # total _iter = max_iter x save_every
 tolerance=0.3
@@ -70,15 +70,21 @@ eval_output_dir = 'temp/'+eval_task_name+'_output/'#+str(seed)+'/'
 directory = train_output_dir
 indices_to_delete_file_path = directory+'/indices_to_delete_file_path_'+str(seed)+'.json'
 
-n_points_file = os.path.join(train_output_dir, "training_results"+str(seed)+".txt")
+n_points_file = os.path.join(train_output_dir, "training_results"+".txt")
+ALL_BINARY_TASKS = ["snli", "mnli", "qqp", "qnli"]
+DOMAIN_TRANSFER = True
 
 #_______________________________________________________________________
 #______________________________________NLPDV____________________________________
+ALL_BINARY_TASKS.remove(eval_task_name.lower())
+if DOMAIN_TRANSFER:
+    sources = np.arange(len(ALL_BINARY_TASKS))
+
 if load_shapley:
     tmc_run = False
 
-train_data_dir = GLUE_DIR+'/'+train_task_name+'/'
-eval_data_dir = GLUE_DIR+'/'+eval_task_name+'/'
+train_data_dir = GLUE_DIR
+eval_data_dir = GLUE_DIR
 name = train_task_name+'_'+eval_task_name
 
 tol = None
@@ -192,7 +198,7 @@ def _calculate_loo_vals(sources, baseline_value, n_points, eval_output_dir, trai
                 if key == 'n_points':
                     n_points2 = int(value)
 
-        assert n_points2 == n_points - len(sources[i])
+        # assert n_points2 == n_points - len(sources[i])
 
         command = eval_run_command + ' --seed ' + str(seed) + ' '
         print(command)
@@ -442,7 +448,7 @@ def _portion_performance(idxs, plot_points, train_run_command, eval_run_command,
         if itr:  print(f'iteration {itr}/{max_itr}', flush=True)
         print(command, flush=True)
         print('=' * 100, flush=True)
-        # os.system(command)
+        os.system(command)
 
         # parse file and set n_points
         n_points2 = None
@@ -454,19 +460,23 @@ def _portion_performance(idxs, plot_points, train_run_command, eval_run_command,
                 if key == 'n_points' and value != "None":
                     n_points2 = int(value)
 
+        ''' #Below code is not for domain sleection
         if not n_points2:
             scores.append(random_score)
             continue
+
+        
         elif n_points2 != len(keep_idxs):
             print(f'n_points2({n_points2}) != len(keep_idxs)({len(keep_idxs)} in removing plots)', flush=True)
-            continue
+            continue 
+        '''
 
         command = eval_run_command + ' --seed ' + str(seed) + ' '
         print('=' * 100, flush=True)
         print(f'Evaluating _portion_performance for {val_} progress {i}/{len(plot_points)}', flush=True)
         print(command, flush=True)
         print('=' * 100, flush=True)
-        # os.system(command)
+        os.system(command)
 
         # parse file and set n_points
         new_score = None
@@ -577,10 +587,10 @@ def performance_plots_adding(directory, vals, train_task_name, eval_task_name, t
                     for val in vals]  # ([TMC_shapley, LOO_vals, .. ] x train_size)
 
     if len(sources.keys()) < num_plot_markers:
-        num_plot_markers = len(sources.keys()) - 1
+        num_plot_markers = len(sources.keys())
     plot_points = np.arange(
         0,
-        max(len(sources.keys()) - 10, num_plot_markers),
+        max(len(sources.keys())-10, num_plot_markers),
         max(len(sources.keys()) // num_plot_markers, 1)
     )
 
@@ -608,7 +618,7 @@ def performance_plots_adding(directory, vals, train_task_name, eval_task_name, t
                 if val_ == "TMC_Shapley": val_="LOO"
                 else: val_ = "GShap"
 
-
+            ''' #Random part 
             # for itr in trange(rnd_iters, desc='Ploting Adding Random: '):
             #     print("="*60, flush=True)
             #     print(f"Calulating performace if we add points in random iter {itr}", flush=True)
@@ -617,7 +627,7 @@ def performance_plots_adding(directory, vals, train_task_name, eval_task_name, t
             #     rnd.append(_portion_performance_addition( np.random.permutation( \
             #         np.argsort(vals_sources[0])[::-1]), plot_points, \
             #         train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd', itr=itr, max_itr=rnd_iters))
-
+            '''
         else:
             perfs = []
             val_ = "TMC_Shapley"
@@ -634,7 +644,7 @@ def performance_plots_adding(directory, vals, train_task_name, eval_task_name, t
                     val_ = "LOO"
                 else:
                     val_ = "GShap"
-
+            ''' Random Part 
             # rnd = []
             # for itr in trange(rnd_iters, desc='Ploting Adding Random: '):
             #     print("=" * 60, flush=True)
@@ -644,8 +654,10 @@ def performance_plots_adding(directory, vals, train_task_name, eval_task_name, t
             #     rnd.append(_portion_performance_addition(np.random.permutation( \
             #         np.argsort(vals_sources[0])[::-1][:length]), plot_points[:length], \
             #         train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd', itr=itr, max_itr=rnd_iters))
-
+            '''
+        '''Random part
         # rnd = np.mean(rnd, 0)
+        '''
         data_dict = {'perfs': perfs, 'rnd': rnd}
         pkl.dump(data_dict, open(adding_performance_dir, 'wb'))
 
@@ -664,19 +676,22 @@ def performance_plots_adding(directory, vals, train_task_name, eval_task_name, t
         legends = ['TMC-Shapley ', 'Random']
     plt.plot(plot_points / n_points * 100, perfs[-1] * 100,
              '-.', lw=5, ms=10, color='g')
+
+    '''Random Part 
     # plt.plot(plot_points / n_points * 100, rnd * 100,
     #          ':', lw=5, ms=10, color='r')
+    '''
+
     plt.legend(legends)
 
-    # pdb.set_trace()
 
     if directory is not None and name is not None:
         plt.savefig(os.path.join(
             directory, 'plots', '{}.png'.format(name + '_adding_new')),
             bbox_inches='tight')
         plt.close()
-    pdb.set_trace()
 
+    return perfs
 
 def _portion_performance_addition(idxs, plot_points, train_run_command, eval_run_command, random_score, n_points, sources=None, val_="TMC_SHAPELY", itr=None, max_itr=None):
         """Given a set of indexes, starts adding points from
@@ -707,6 +722,7 @@ def _portion_performance_addition(idxs, plot_points, train_run_command, eval_run
             print('=' * 100, flush=True)
             os.system(command)
 
+
             # parse file and set n_points
             n_points2 = None
             with open(n_points_file, "r") as reader:
@@ -716,14 +732,14 @@ def _portion_performance_addition(idxs, plot_points, train_run_command, eval_run
                     value = line[-1]
                     if key == 'n_points' and value != "None":
                         n_points2 = int(value)
-
+            '''#Below code is not for domain sleection 
             if not n_points2:
                 scores.append(random_score)
                 continue
             elif n_points2 != len(keep_idxs):
                 print(f'n_points2({n_points2}) != len(keep_idxs)({len(keep_idxs)})', flush=True)
                 continue
-
+            '''
             command = eval_run_command + ' --seed ' + str(seed) + ' '
             print('=' * 100, flush=True)
             print(f'Evaluating _portion_performance_adding for {val_} progress {i}/{len(plot_points)}', flush=True)
@@ -798,9 +814,12 @@ def _tmc_shap(train_run_command, eval_run_command, eval_output_dir,  n_points_fi
 
             if not n_points2:
                continue
+
+            '''#Below code is not for domain sleection
             elif n_points2 != len(Selected_IDS):
                 print(f'n_points2({n_points2}) != len(Selected_IDS)({len(Selected_IDS)})', flush=True)
                 pdb.set_trace()
+            '''
 
             command = eval_run_command + ' --seed ' + str(seed) + ' '
             print(command, flush=True)
@@ -870,6 +889,9 @@ if os.path.exists(loo_dir):
     except:
         print('n_points, etc were not stored ', flush=True)
 
+
+
+
 if not n_points:
 
     print('=' * 50, flush=True)
@@ -882,13 +904,17 @@ if not n_points:
     os.system(command)
 
     # parse file and set n_points
-    with open(n_points_file, "r") as reader:
-        for line in reader:
-            line = line.strip().split()
-            key = line[0]
-            value = line[-1]
-            if key == 'n_points':
-                n_points = int(value)
+    if not ALL_BINARY_TASKS:
+        with open(n_points_file, "r") as reader:
+            for line in reader:
+                line = line.strip().split()
+                key = line[0]
+                value = line[-1]
+                if key == 'n_points':
+                    n_points = int(value)
+
+    else:
+        n_points = len(sources)
 
     # initial Eval on whole dataset
     command = eval_run_command + ' --is_baseline_run --seed ' + str(seed) + ' ' + ' --data_size '+str(eval_data_size)
@@ -935,7 +961,7 @@ if not load_shapley  :
 if loo_run:
     try:
         len(vals_loo)
-        if len(vals_loo) != train_data_size:
+        if len(vals_loo) != n_points:
             vals_loo = None
         else:
             loo_run = False
@@ -966,7 +992,7 @@ def run_routine(tmc_run, train_run_command, eval_run_command, eval_data_size, nu
             pdb.set_trace()
         if tmc_run:
             # pdb.set_trace()
-            error_ = error(mem_tmc, min_convergence_iter=50)
+            error_ = error(mem_tmc, min_convergence_iter=3)
             print('=' * 50, flush=True)
             print(f'Error now {error_}, and err is {err}', flush=True)
             print('=' * 50, flush=True)
@@ -998,9 +1024,8 @@ def run_routine(tmc_run, train_run_command, eval_run_command, eval_data_size, nu
     return  mem_tmc, idxs_tmc, vals_tmc
 
 
+
 if not load_shapley: mem_tmc, idxs_tmc, vals_tmc = run_routine(tmc_run, train_run_command, eval_run_command, eval_data_size, num_train_epochs, eval_output_dir,  n_points_file, mem_tmc, idxs_tmc, random_score, mean_score, n_points, save_every, seed, max_iter, tolerance, sources)
-
-
 
 mem_tmc, idxs_tmc, vals_tmc, mem_g, idxs_g, vals_g = merge_results(directory, n_points, sources)
 
@@ -1008,19 +1033,17 @@ vals_tmc = np.mean(np.concatenate([mem_tmc, vals_loo.reshape(1, -1)]), 0)
 
 shapley_value_plots(directory, [vals_tmc, vals_loo], n_points, num_plot_markers=20, sources=sources, name=name+'_'+str(n_points))
 
-
 # pdb.set_trace()
 
-
-performance_plots_adding(directory, [vals_tmc, vals_loo], train_task_name, eval_task_name,\
+perfs = performance_plots_adding(directory, [vals_tmc, vals_loo], train_task_name, eval_task_name,\
                          train_run_command, eval_run_command, random_score, n_points, name=name+'_'+str(n_points),\
                          num_plot_markers=20, sources=sources, rnd_iters=2, length=None)
 
-pdb.set_trace()
+# pdb.set_trace()
 # performance_plots(directory, [vals_tmc, vals_loo], train_task_name, eval_task_name,\
 #                   train_run_command , eval_run_command, random_score, n_points, name=name+'_'+str(n_points), \
 #                   num_plot_markers=20, sources=sources, rnd_iters=2, length=None)
 
-pdb.set_trace()
+# pdb.set_trace()
 
-print("="*50, "\nDone", "\n", "="*50, flush=True)
+print("="*50, f'\nDone Shapely Values {vals_tmc}, Loo vals {vals_loo} Perfs {perfs}', "\n", "="*50, flush=True)
