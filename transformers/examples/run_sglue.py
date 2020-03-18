@@ -311,8 +311,8 @@ def train(args, train_dataset, model, tokenizer):
 
 def evaluate(args, model, tokenizer, prefix="", is_binary=True):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
-    eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli" and not is_binary  else (args.task_name,)
-    eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM") if args.task_name == "mnli" and not is_binary else (args.output_dir,)
+    eval_task_names = ("mnli-mm") if args.task_name == "mnli"  else (args.task_name,)
+    eval_outputs_dirs = (args.output_dir + "-MM") if args.task_name == "mnli"  else (args.output_dir,)
 
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
@@ -442,7 +442,8 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
     # Data Shepley debug
     if args.data_size:
         print(f'originial data size: {len(features)} truncated to {args.data_size}', flush=True)
-        features = features[:args.data_size]
+        start = int(len(features)/2)-args.data_size
+        features = features[start : start+args.data_size + 1 ]
     # if args.indices_to_delete_file_path and not evaluate:
     #     with open(args.indices_to_delete_file_path, "r") as reader:
     #         print("***** reading ids to remove *****", flush=True)
@@ -699,6 +700,10 @@ def main():
     args.output_mode = output_modes[args.task_name]
     label_list = processor.get_labels()
     num_labels = len(label_list)
+    # Hack for binary domain transfer task
+    num_labels = 3   #Alway 3 for all tasks max numlabels=3 (binary is label encoding but numlabels =3
+
+
 
     # Load pretrained model and tokenizer
     if args.local_rank not in [-1, 0]:
@@ -735,9 +740,9 @@ def main():
     if args.do_train:
         ALL_BINARY_TASKS = ["snli", "mnli", "qqp", "qnli"]
         ALL_BINARY_TASKS.remove(args.task_name)
+
         logger.info(" ALL_BINARY_TASKS = %s, task = %s args.indices_to_delete_file_path = %s", ALL_BINARY_TASKS, args.task_name, args.indices_to_delete_file_path)
-        # logger.info(" not evaluate = %s args.indices_to_delete_file_path and not evaluate=%s", not evaluate, args.indices_to_delete_file_path and not evaluate)
-        # pdb.set_trace()
+        logger.info(" not evaluate = %s args.indices_to_delete_file_path and not evaluate=%s", not evaluate, args.indices_to_delete_file_path and not evaluate)
         if args.indices_to_delete_file_path:
             with open(args.indices_to_delete_file_path, "r") as reader:
                 print("***** reading ids to remove *****", flush=True)

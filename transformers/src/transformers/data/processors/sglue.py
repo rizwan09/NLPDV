@@ -28,7 +28,7 @@ if is_tf_available():
 logger = logging.getLogger(__name__)
 
 
-def glue_convert_examples_to_features(
+def sglue_convert_examples_to_features(
     examples,
     tokenizer,
     max_length=512,
@@ -68,15 +68,16 @@ def glue_convert_examples_to_features(
         is_tf_dataset = True
 
     if task is not None:
-        processor = glue_processors[task]()
+        processor = sglue_processors[task]()
         if label_list is None:
             label_list = processor.get_labels()
             logger.info("Using label list %s for task %s" % (label_list, task))
         if output_mode is None:
-            output_mode = glue_output_modes[task]
+            output_mode = sglue_output_modes[task]
             logger.info("Using output mode %s for task %s" % (output_mode, task))
 
-    label_map = {label: i for i, label in enumerate(label_list)}
+    # label_map = {label: i for i, label in enumerate(label_list)}
+    label_map = {"contradiction":0, "entailment":1, "neutral":0, "0":0, "1":1, "not_entailment": 0}
 
     features = []
     for (ex_index, example) in enumerate(examples):
@@ -117,7 +118,12 @@ def glue_convert_examples_to_features(
         )
 
         if output_mode == "classification":
-            label = label_map[example.label]
+            try:
+                label = label_map[example.label]
+            except:
+                import pdb
+                print(example.label, label_map)
+                pdb.set_trace()
         elif output_mode == "regression":
             label = float(example.label)
         else:
@@ -190,8 +196,8 @@ class MnliProcessor(DataProcessor):
 
     def get_labels(self):
         """See base class."""
-        # return ["contradiction", "entailment", "neutral"]
-        return ["0", "1"]
+        return ["contradiction", "entailment", "neutral"]
+
 
     def _create_examples(self, lines, set_type):
         """Creates examples for the training and dev sets."""
@@ -213,48 +219,6 @@ class MnliMismatchedProcessor(MnliProcessor):
     def get_dev_examples(self, data_dir):
         """See base class."""
         return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev_mismatched.tsv")), "dev_matched")
-
-
-
-
-
-class Sst2Processor(DataProcessor):
-    """Processor for the SST-2 data set (GLUE version)."""
-
-    def get_example_from_tensor_dict(self, tensor_dict):
-        """See base class."""
-        return InputExample(
-            tensor_dict["idx"].numpy(),
-            tensor_dict["sentence"].numpy().decode("utf-8"),
-            None,
-            str(tensor_dict["label"].numpy()),
-        )
-
-    def get_train_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(self._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
-
-    def get_dev_examples(self, data_dir):
-        """See base class."""
-        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev.tsv")), "dev")
-
-    def get_labels(self):
-        """See base class."""
-        return ["0", "1"]
-
-    def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
-        examples = []
-        for (i, line) in enumerate(lines):
-            if i == 0:
-                continue
-            guid = "%s-%s" % (set_type, i)
-            text_a = line[0]
-            label = line[1]
-            examples.append(InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
-        return examples
-
-
 
 
 class QqpProcessor(DataProcessor):
@@ -320,8 +284,8 @@ class QnliProcessor(DataProcessor):
 
     def get_labels(self):
         """See base class."""
-        # return ["entailment", "not_entailment"]
-        return ["0", "1"]
+        return [ "not_entailment", "entailment",]
+
 
     def _create_examples(self, lines, set_type):
         """Creates examples for the training and dev sets."""
@@ -332,7 +296,7 @@ class QnliProcessor(DataProcessor):
             guid = "%s-%s" % (set_type, line[0])
             text_a = line[1]
             text_b = line[2]
-            label = "1" if line[-1]=="entailment" else "0"
+            label =  line[-1]
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
@@ -359,7 +323,7 @@ class SnliProcessor(DataProcessor):
 
     def get_labels(self):
         """See base class."""
-        return ["0", "1"]
+        return ["contradiction", "entailment", "neutral"]
 
     def _create_examples(self, lines, set_type):
         """Creates examples for the training and dev sets."""
@@ -371,36 +335,30 @@ class SnliProcessor(DataProcessor):
             try:
                 text_a = line[7]
                 text_b = line[8]
-                label = label = "1" if line[-1]=="entailment" else "0"
+                label =  line[-1]
             except IndexError:
                 continue
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
-glue_tasks_num_labels = {
+sglue_tasks_num_labels = {
     "snli":2,
     "mnli": 2,
-    "mnli-mm": 2,
-    "sst-2": 2,
     "qqp": 2,
     "qnli": 2
 
 }
 
-glue_processors = {
+sglue_processors = {
     "snli": SnliProcessor,
     "mnli": MnliProcessor,
-    "mnli-mm": MnliMismatchedProcessor,
-    "sst-2": Sst2Processor,
     "qqp": QqpProcessor,
     "qnli": QnliProcessor,
 }
 
-glue_output_modes = {
+sglue_output_modes = {
     "snli": "classification",
     "mnli": "classification",
-    "mnli-mm": "classification",
-    "sst-2": "classification",
     "qqp": "classification",
     "qnli": "classification"
 
