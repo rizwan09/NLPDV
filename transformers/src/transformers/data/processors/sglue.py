@@ -345,7 +345,8 @@ sglue_tasks_num_labels = {
     "snli":2,
     "mnli": 2,
     "qqp": 2,
-    "qnli": 2
+    "qnli": 2,
+    "mnli-mm": 2
 
 }
 
@@ -354,12 +355,14 @@ sglue_processors = {
     "mnli": MnliProcessor,
     "qqp": QqpProcessor,
     "qnli": QnliProcessor,
+    "mnli-mm": MnliMismatchedProcessor,
 }
 
 sglue_output_modes = {
     "snli": "classification",
     "mnli": "classification",
     "qqp": "classification",
-    "qnli": "classification"
+    "qnli": "classification",
+    "mnli-mm": "classification",
 
 }

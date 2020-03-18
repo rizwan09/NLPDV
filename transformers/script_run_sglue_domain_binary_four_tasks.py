@@ -14,13 +14,11 @@ from tqdm import trange, tqdm
 
 # _______________________________________________________________________
 # ______________________________________NLPDV____________________________________
-# Task param
-train_task_name = 'SNLI'
-eval_task_name = 'SNLI'
+# Task to evaluate (both train and eval should be same) The training dataset will be MNLI, SNLI, QQP, QNLI - train_task_name/eval_task_name
+train_task_name = 'QNLI'
+eval_task_name = 'QNLI'
 # CUDA gpus
-CUDA_VISIBLE_DEVICES = [0, 1, 2, 3, 4, 5, 6, 7]
-
-
+CUDA_VISIBLE_DEVICES = [0,1,2]# #,3, 4, 5, 6, 7]
 
 
 # Model params

@@ -311,8 +311,8 @@ def train(args, train_dataset, model, tokenizer):
 
 def evaluate(args, model, tokenizer, prefix="", is_binary=True):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
-    eval_task_names = ("mnli-mm") if args.task_name == "mnli"  else (args.task_name,)
-    eval_outputs_dirs = (args.output_dir + "-MM") if args.task_name == "mnli"  else (args.output_dir,)
+    eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli"  else (args.task_name,)
+    eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM") if args.task_name == "mnli"  else (args.output_dir,)
 
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
@@ -390,7 +390,7 @@ def evaluate(args, model, tokenizer, prefix="", is_binary=True):
 
 
 def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2):
-    args.data_dir = args.glue_dir+task.upper()
+    args.data_dir = args.glue_dir+task.replace('-mm', '').upper()
     if args.local_rank not in [-1, 0] and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
 
