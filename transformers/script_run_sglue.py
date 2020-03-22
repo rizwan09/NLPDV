@@ -18,34 +18,34 @@ GLUE_DIR='/home/rizwan/NLPDV/glue/'
 run_file= './examples/run_sglue.py'
 # run_file= './examples/data_valuation.py'
 model_type = 'bert'
-train_model_name_or_path= 'bert-large-uncased-whole-word-masking'
+train_model_name_or_path= 'bert-base-cased'    #'bert-large-uncased-whole-word-masking'
 do_lower_case = True
-num_train_epochs = 2.0
+num_train_epochs = 1.0
 num_eval_epochs = 2.0
 per_gpu_eval_batch_size = 8
-per_gpu_train_batch_size = 8
+per_gpu_train_batch_size = 16
 learning_rate = 2e-5
 max_seq_length = 128
 fp16 = True
 overwrite_cache = False
 
 # Task param
-train_task_name='MNLI'
-eval_task_name='MNLI'
+train_task_name='QNLI'
+eval_task_name='QNLI'
 
 # CUDA gpus
-CUDA_VISIBLE_DEVICES = [0,1,2,3,4,5,6,7]
+CUDA_VISIBLE_DEVICES = [0, 1, 2, 3, 7]
 #_______________________________________________________________________
 #______________________________________NLPDV____________________________________
 
 # Debug data size
 train_data_size = 10000
-eval_data_size = 2000
+eval_data_size = 500
 cluster_size = 10
 cluster_num = train_data_size//cluster_size
 # Seed
 seed = 42# 9, 109 for nlp9, 42,43 for nlp 10,
-max_iter = 4
+max_iter = 50
 save_every = 1
 # total _iter = max_iter x save_every
 tolerance=0.3
@@ -59,7 +59,7 @@ sources =  np.array([i//cluster_size for i in range(train_data_size)])
 loo_run = True
 tmc_run = True
 g_run = False
-load_removing_performance_plot = load_adding_performance_plot = False
+load_removing_performance_plot = load_adding_performance_plot = True
 
 overwrite_directory = False # True when just load shapley's when to plot only
 load_shapley = True
@@ -71,12 +71,13 @@ directory = train_output_dir
 indices_to_delete_file_path = directory+'/indices_to_delete_file_path_'+str(seed)+'.json'
 
 n_points_file = os.path.join(train_output_dir, "training_results"+".txt")
-ALL_BINARY_TASKS = ["snli", "mnli", "qqp", "qnli"]
+
+ALL_BINARY_TASKS = ['snli', 'qqp', 'qnli', 'mnli-fiction', 'mnli-travel', 'mnli-slate', 'mnli-government', 'mnli-telephone']
 DOMAIN_TRANSFER = True
 
 #_______________________________________________________________________
 #______________________________________NLPDV____________________________________
-ALL_BINARY_TASKS.remove(eval_task_name.lower())
+if eval_task_name.lower() in ALL_BINARY_TASKS: ALL_BINARY_TASKS.remove(eval_task_name.lower())
 if DOMAIN_TRANSFER:
     sources = np.arange(len(ALL_BINARY_TASKS))
 
@@ -112,15 +113,22 @@ if overwrite_cache:
     run_command += ' --overwrite_cache '
 
 # For training:
-train_run_command  = run_command + ' --do_train --task_name '+ train_task_name + \
+train_run_command_full  = run_command + ' --do_train --task_name '+ train_task_name + \
                      ' --data_dir '+ train_data_dir + ' --output_dir '+ \
-                     train_output_dir + ' --model_name_or_path ' + train_model_name_or_path \
-                     + ' --data_size '+str(train_data_size)
+                     train_output_dir + ' --model_name_or_path ' + train_model_name_or_path
+
+
+train_run_command  = train_run_command_full + ' --data_size '+str(train_data_size)
 
 # For eval:
-eval_run_command = run_command  + ' --do_eval --task_name '+ eval_task_name + \
+eval_run_command_full = run_command  + ' --do_eval --task_name '+ eval_task_name + \
                    ' --data_dir '+ eval_data_dir + ' --output_dir '+ eval_output_dir + \
                    ' --model_name_or_path ' + train_output_dir
+
+eval_run_command = eval_run_command_full + ' --data_size '+str(eval_data_size)
+
+small_performance_dict = {}
+full_performance_dict = {}
 
 
 #_______________________________________________________________________
@@ -183,39 +191,46 @@ def _calculate_loo_vals(sources, baseline_value, n_points, eval_output_dir, trai
         print('='*50, flush=True)
         print(f'Calculating LOO score for {counter}/{len(sources)}!', flush=True)
         print('='*50, flush=True)
-        write_indices_to_delete(indices_to_delete_file_path, sources[i])
 
-        command = train_run_command + ' --LOO --seed ' + str(seed) + ' --indices_to_delete_file_path ' + indices_to_delete_file_path
-        print(command)
-        os.system(command)
+        data_combination = sorted(list(sources.keys()).remove(i))
+        data_combination_name = '_'.join([ALL_BINARY_TASKS[id] for id in data_combination])
+        removed_value = None
+        if data_combination_name in small_performance_dict:
+            removed_value = small_performance_dict[data_combination_name]
+        else:
+            write_indices_to_delete(indices_to_delete_file_path, sources[i])
+            command = train_run_command + ' --LOO --seed ' + str(seed) + ' --indices_to_delete_file_path ' + indices_to_delete_file_path
+            print(command)
+            os.system(command)
 
-        # parse file and set n_points
-        with open(n_points_file, "r") as reader:
-            for line in reader:
-                line = line.strip().split()
-                key = line[0]
-                value = line[-1]
-                if key == 'n_points':
-                    n_points2 = int(value)
+            # parse file and set n_points
+            with open(n_points_file, "r") as reader:
+                for line in reader:
+                    line = line.strip().split()
+                    key = line[0]
+                    value = line[-1]
+                    if key == 'n_points':
+                        n_points2 = int(value)
 
-        # assert n_points2 == n_points - len(sources[i])
+            command = eval_run_command + ' --seed ' + str(seed) + ' '
+            print(command)
+            os.system(command)
 
-        command = eval_run_command + ' --seed ' + str(seed) + ' '
-        print(command)
-        os.system(command)
+            # parse file and set n_points
+            output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
+            with open(output_eval_file, "r") as reader:
+                for line in reader:
+                    line = line.strip().split()
+                    key = line[0]
+                    value = line[-1]
+                    if key in ['acc']:
+                        removed_value = float(value)
 
-        # parse file and set n_points
-        output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
-        with open(output_eval_file, "r") as reader:
-            for line in reader:
-                line = line.strip().split()
-                key = line[0]
-                value = line[-1]
-                if key in ['acc']:
-                    removed_value = float(value)
-
+        if not removed_value: pdb.set_trace()
         vals_loo[sources[i]] = (baseline_value - removed_value)
         vals_loo[sources[i]] /= len(sources[i])
+        small_performance_dict.update({data_combination_name: removed_value})
+    print("After Loo: small_performance_dict: ", small_performance_dict, 'full_performance_dict:', full_performance_dict, flush=True)
     return vals_loo
 
 def save_results(directory, vals_loo, tmc_number, mem_tmc, idxs_tmc, \
@@ -229,6 +244,11 @@ def save_results(directory, vals_loo, tmc_number, mem_tmc, idxs_tmc, \
         data_dict = {'loo': vals_loo, 'n_points': n_points, 'tol': tol, 'sources':sources, \
                      'baseline_value': baseline_value, 'mean_score': mean_score, 'random_score': random_score}
         pkl.dump(data_dict, open(loo_dir, 'wb'))
+
+    performance_dir = os.path.join(directory, 'perf.pkl')
+    pkl.dump({'small_performance_dict': small_performance_dict, 'full_performance_dict': full_performance_dict},\
+             open(performance_dir, 'wb'))
+
 
     tmc_dir = os.path.join(
         directory,
@@ -272,7 +292,7 @@ def _merge_parallel_results(key, directory, n_points, sources, max_samples=None)
             directory,
             'mem_{}_{}.pkl'.format(key, number)
         )
-        print(samples_dir)
+        print(samples_dir, flush=True)
         dic = pkl.load(open(samples_dir, 'rb'))
         if not len(dic['mem_{}'.format(key)]):
             continue
@@ -436,59 +456,72 @@ def _portion_performance(idxs, plot_points, train_run_command, eval_run_command,
     scores = []
     all_ids = np.array(range(n_points))
     for i in trange(len(plot_points), 0, -1, desc='Inside '+val_+' _portion_performance: removing sources in descending'):
+
+
         keep_idxs = np.concatenate([sources[idx] for idx
                                     in idxs[plot_points[i - 1]:]], -1)
 
-        write_indices_to_delete(indices_to_delete_file_path, np.setdiff1d(all_ids, keep_idxs))  # ids to remove
-
-        command = train_run_command + ' --seed ' + str(
-            seed) + ' --indices_to_delete_file_path ' + indices_to_delete_file_path
-        print('='*100, flush=True)
-        print(f'Training _portion_performance for {val_} progress {i}/{len(plot_points)} training on {len(keep_idxs)} dataset', flush=True)
-        if itr:  print(f'iteration {itr}/{max_itr}', flush=True)
-        print(command, flush=True)
-        print('=' * 100, flush=True)
-        os.system(command)
-
-        # parse file and set n_points
-        n_points2 = None
-        with open(n_points_file, "r") as reader:
-            for line in reader:
-                line = line.strip().split()
-                key = line[0]
-                value = line[-1]
-                if key == 'n_points' and value != "None":
-                    n_points2 = int(value)
-
-        ''' #Below code is not for domain sleection
-        if not n_points2:
-            scores.append(random_score)
-            continue
-
-        
-        elif n_points2 != len(keep_idxs):
-            print(f'n_points2({n_points2}) != len(keep_idxs)({len(keep_idxs)} in removing plots)', flush=True)
-            continue 
-        '''
-
-        command = eval_run_command + ' --seed ' + str(seed) + ' '
-        print('=' * 100, flush=True)
-        print(f'Evaluating _portion_performance for {val_} progress {i}/{len(plot_points)}', flush=True)
-        print(command, flush=True)
-        print('=' * 100, flush=True)
-        os.system(command)
-
-        # parse file and set n_points
         new_score = None
-        output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
-        with open(output_eval_file, "r") as reader:
-            for line in reader:
-                line = line.strip().split()
-                key = line[0]
-                value = line[-1]
-                if key in ['acc']:
-                    new_score = float(value)
-        assert new_score
+
+        data_combination = sorted(idxs[plot_points[i - 1]:])
+        data_combination_name = '_'.join([ALL_BINARY_TASKS[id] for id in data_combination])
+        if data_combination_name in full_performance_dict:
+            new_score = full_performance_dict[data_combination_name]
+        else:
+            write_indices_to_delete(indices_to_delete_file_path, np.setdiff1d(all_ids, keep_idxs))  # ids to remove
+
+            command = train_run_command + ' --seed ' + str(
+                seed) + ' --indices_to_delete_file_path ' + indices_to_delete_file_path
+            print('='*100, flush=True)
+            print(f'Training _portion_performance for {val_} progress {i}/{len(plot_points)} training on {len(keep_idxs)} dataset', flush=True)
+            if itr:  print(f'iteration {itr}/{max_itr}', flush=True)
+            print(command, flush=True)
+            print('=' * 100, flush=True)
+            os.system(command)
+
+            # parse file and set n_points
+            n_points2 = None
+            with open(n_points_file, "r") as reader:
+                for line in reader:
+                    line = line.strip().split()
+                    key = line[0]
+                    value = line[-1]
+                    if key == 'n_points' and value != "None":
+                        n_points2 = int(value)
+
+            ''' #Below code is not for domain sleection
+            if not n_points2:
+                scores.append(random_score)
+                continue
+    
+            
+            elif n_points2 != len(keep_idxs):
+                print(f'n_points2({n_points2}) != len(keep_idxs)({len(keep_idxs)} in removing plots)', flush=True)
+                continue 
+            '''
+
+            command = eval_run_command + ' --seed ' + str(seed) + ' '
+            print('=' * 100, flush=True)
+            print(f'Evaluating _portion_performance for {val_} progress {i}/{len(plot_points)}', flush=True)
+            print(command, flush=True)
+            print('=' * 100, flush=True)
+            os.system(command)
+
+            # parse file and set n_points
+
+            output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
+            with open(output_eval_file, "r") as reader:
+                for line in reader:
+                    line = line.strip().split()
+                    key = line[0]
+                    value = line[-1]
+                    if key in ['acc']:
+                        new_score = float(value)
+            assert new_score
+            full_performance_dict.update({data_combination_name: new_score})
+            print("After _portion_performance small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
+                  full_performance_dict, flush=True)
+
         scores.append(new_score)
 
     return np.array(scores)[::-1]
@@ -556,7 +589,7 @@ def shapley_value_plots(directory, vals,  n_points, name=None, num_plot_markers=
 
 
 def performance_plots_adding(directory, vals, train_task_name, eval_task_name, train_run_command, eval_run_command, random_score, n_points, name=None, num_plot_markers=20,
-                             sources=None, rnd_iters=2, length=None):
+                             sources=None, rnd_iters=1, length=None):
     """Plots the effect of removing valuable points.
 
     Args:
@@ -618,16 +651,16 @@ def performance_plots_adding(directory, vals, train_task_name, eval_task_name, t
                 if val_ == "TMC_Shapley": val_="LOO"
                 else: val_ = "GShap"
 
-            ''' #Random part 
-            # for itr in trange(rnd_iters, desc='Ploting Adding Random: '):
-            #     print("="*60, flush=True)
-            #     print(f"Calulating performace if we add points in random iter {itr}", flush=True)
-            #     print("=" * 60, flush=True)
-            #
-            #     rnd.append(_portion_performance_addition( np.random.permutation( \
-            #         np.argsort(vals_sources[0])[::-1]), plot_points, \
-            #         train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd', itr=itr, max_itr=rnd_iters))
-            '''
+            #Random part
+            for itr in trange(rnd_iters, desc='Ploting Adding Random: '):
+                print("="*60, flush=True)
+                print(f"Calulating performace if we add points in random iter {itr}", flush=True)
+                print("=" * 60, flush=True)
+
+                rnd.append(_portion_performance_addition( np.random.permutation( \
+                    np.argsort(vals_sources[0])[::-1]), plot_points, \
+                    train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd', itr=itr, max_itr=rnd_iters))
+
         else:
             perfs = []
             val_ = "TMC_Shapley"
@@ -644,20 +677,19 @@ def performance_plots_adding(directory, vals, train_task_name, eval_task_name, t
                     val_ = "LOO"
                 else:
                     val_ = "GShap"
-            ''' Random Part 
-            # rnd = []
-            # for itr in trange(rnd_iters, desc='Ploting Adding Random: '):
-            #     print("=" * 60, flush=True)
-            #     print(f"Calulating performace if we add points in random iter {itr}", flush=True)
-            #     print("=" * 60, flush=True)
-            #
-            #     rnd.append(_portion_performance_addition(np.random.permutation( \
-            #         np.argsort(vals_sources[0])[::-1][:length]), plot_points[:length], \
-            #         train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd', itr=itr, max_itr=rnd_iters))
-            '''
-        '''Random part
-        # rnd = np.mean(rnd, 0)
-        '''
+            # Random Part
+            rnd = []
+            for itr in trange(rnd_iters, desc='Ploting Adding Random: '):
+                print("=" * 60, flush=True)
+                print(f"Calulating performace if we add points in random iter {itr}", flush=True)
+                print("=" * 60, flush=True)
+
+                rnd.append(_portion_performance_addition(np.random.permutation( \
+                    np.argsort(vals_sources[0])[::-1][:length]), plot_points[:length], \
+                    train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd', itr=itr, max_itr=rnd_iters))
+
+        rnd = np.mean(rnd, 0)
+
         data_dict = {'perfs': perfs, 'rnd': rnd}
         pkl.dump(data_dict, open(adding_performance_dir, 'wb'))
 
@@ -677,10 +709,10 @@ def performance_plots_adding(directory, vals, train_task_name, eval_task_name, t
     plt.plot(plot_points / n_points * 100, perfs[-1] * 100,
              '-.', lw=5, ms=10, color='g')
 
-    '''Random Part 
-    # plt.plot(plot_points / n_points * 100, rnd * 100,
-    #          ':', lw=5, ms=10, color='r')
-    '''
+
+    plt.plot(plot_points / n_points * 100, rnd * 100,
+             ':', lw=5, ms=10, color='r')
+
 
     plt.legend(legends)
 
@@ -710,55 +742,66 @@ def _portion_performance_addition(idxs, plot_points, train_run_command, eval_run
                 keep_idxs = np.concatenate([sources[idx] for idx in idxs], -1)
             else: keep_idxs = np.concatenate([sources[idx] for idx
                                         in idxs[:plot_points[i] ]], -1)
-
-            write_indices_to_delete(indices_to_delete_file_path, np.setdiff1d(all_ids, keep_idxs))  # ids to remove
-
-            command = train_run_command + ' --seed ' + str(
-                seed) + ' --indices_to_delete_file_path ' + indices_to_delete_file_path
-            print('=' * 100, flush=True)
-            print(f'Training _portion_performance_adding for {val_} progress {i}/{len(plot_points)} training on {len(keep_idxs)} dataset iter', flush=True)
-            if itr:  print(f'iteration {itr}/{max_itr}', flush=True)
-            print(command, flush=True)
-            print('=' * 100, flush=True)
-            os.system(command)
-
-
-            # parse file and set n_points
-            n_points2 = None
-            with open(n_points_file, "r") as reader:
-                for line in reader:
-                    line = line.strip().split()
-                    key = line[0]
-                    value = line[-1]
-                    if key == 'n_points' and value != "None":
-                        n_points2 = int(value)
-            '''#Below code is not for domain sleection 
-            if not n_points2:
-                scores.append(random_score)
-                continue
-            elif n_points2 != len(keep_idxs):
-                print(f'n_points2({n_points2}) != len(keep_idxs)({len(keep_idxs)})', flush=True)
-                continue
-            '''
-            command = eval_run_command + ' --seed ' + str(seed) + ' '
-            print('=' * 100, flush=True)
-            print(f'Evaluating _portion_performance_adding for {val_} progress {i}/{len(plot_points)}', flush=True)
-            print(command, flush=True)
-            print('=' * 100, flush=True)
-            os.system(command)
-
-            # parse file and set n_points
             new_score = None
-            output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
-            with open(output_eval_file, "r") as reader:
-                for line in reader:
-                    line = line.strip().split()
-                    key = line[0]
-                    value = line[-1]
-                    if key in ['acc']:
-                        new_score = float(value)
-            assert new_score
+
+            data_combination = sorted(idxs[:plot_points[i] ])
+            data_combination_name = '_'.join([ALL_BINARY_TASKS[id] for id in data_combination])
+            if data_combination_name in full_performance_dict:
+                new_score = full_performance_dict[data_combination_name]
+            else:
+                write_indices_to_delete(indices_to_delete_file_path, np.setdiff1d(all_ids, keep_idxs))  # ids to remove
+
+                command = train_run_command + ' --seed ' + str(
+                    seed) + ' --indices_to_delete_file_path ' + indices_to_delete_file_path
+                print('=' * 100, flush=True)
+                print(f'Training _portion_performance_adding for {val_} progress {i}/{len(plot_points)} training on {len(keep_idxs)} dataset iter', flush=True)
+                if itr:  print(f'iteration {itr}/{max_itr}', flush=True)
+                print(command, flush=True)
+                print('=' * 100, flush=True)
+                os.system(command)
+
+
+                # parse file and set n_points
+                n_points2 = None
+                with open(n_points_file, "r") as reader:
+                    for line in reader:
+                        line = line.strip().split()
+                        key = line[0]
+                        value = line[-1]
+                        if key == 'n_points' and value != "None":
+                            n_points2 = int(value)
+                '''#Below code is not for domain sleection 
+                if not n_points2:
+                    scores.append(random_score)
+                    continue
+                elif n_points2 != len(keep_idxs):
+                    print(f'n_points2({n_points2}) != len(keep_idxs)({len(keep_idxs)})', flush=True)
+                    continue
+                '''
+                command = eval_run_command + ' --seed ' + str(seed) + ' '
+                print('=' * 100, flush=True)
+                print(f'Evaluating _portion_performance_adding for {val_} progress {i}/{len(plot_points)}', flush=True)
+                print(command, flush=True)
+                print('=' * 100, flush=True)
+                os.system(command)
+
+                # parse file and set n_points
+
+                output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
+                with open(output_eval_file, "r") as reader:
+                    for line in reader:
+                        line = line.strip().split()
+                        key = line[0]
+                        value = line[-1]
+                        if key in ['acc']:
+                            new_score = float(value)
+                assert new_score
+                full_performance_dict.update({data_combination_name: new_score})
+                print("After _portion_performance_addition: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
+                      full_performance_dict, flush=True)
+
             scores.append(new_score)
+
 
         return np.array(scores)
 
@@ -790,52 +833,63 @@ def _tmc_shap(train_run_command, eval_run_command, eval_output_dir,  n_points_fi
         for n, idx in enumerate(tqdm(idxs, desc='Inside one iter/save_every idxs')):
             old_score = new_score
             Selected_IDS += list(sources[idx]) #ids to keep
-            write_indices_to_delete(indices_to_delete_file_path, list( all_ids.difference(set(Selected_IDS) ) ) ) #ids to remove
-
-            command = train_run_command + ' --seed ' + str(
-                seed) + ' --indices_to_delete_file_path ' + indices_to_delete_file_path
-            print('=' * 100, flush=True)
-            print('{}/{} TMC_Shapley iterations.'.format(
-                (iter_counter * (iterations) + iteration )*len(sources)+n+1, (max_iter * iterations)*len(sources)), flush=True)
-            print('=' * 100, flush=True)
-            print(command, flush=True)
-            print('=' * 100, flush=True)
-            os.system(command)
-
-            # parse file and set n_points
-            n_points2 = None
-            with open(n_points_file, "r") as reader:
-                for line in reader:
-                    line = line.strip().split()
-                    key = line[0]
-                    value = line[-1]
-                    if key == 'n_points' and value != "None":
-                        n_points2 = int(value)
-
-            if not n_points2:
-               continue
-
-            '''#Below code is not for domain sleection
-            elif n_points2 != len(Selected_IDS):
-                print(f'n_points2({n_points2}) != len(Selected_IDS)({len(Selected_IDS)})', flush=True)
-                pdb.set_trace()
-            '''
-
-            command = eval_run_command + ' --seed ' + str(seed) + ' '
-            print(command, flush=True)
-            os.system(command)
-
-            # parse file and set n_points
             new_score = None
-            output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
-            with open(output_eval_file, "r") as reader:
-                for line in reader:
-                    line = line.strip().split()
-                    key = line[0]
-                    value = line[-1]
-                    if key in ['acc']:
-                        new_score = float(value)
-            assert new_score
+
+            data_combination = sorted(idxs[:n+1])
+            data_combination_name = '_'.join([ALL_BINARY_TASKS[id] for id in data_combination])
+            if data_combination_name in small_performance_dict:
+                new_score = small_performance_dict[data_combination_name]
+            else:
+                write_indices_to_delete(indices_to_delete_file_path, list( all_ids.difference(set(Selected_IDS) ) ) ) #ids to remove
+
+                command = train_run_command + ' --seed ' + str(
+                    seed) + ' --indices_to_delete_file_path ' + indices_to_delete_file_path
+                print('=' * 100, flush=True)
+                print('{}/{} TMC_Shapley iterations.'.format(
+                    (iter_counter * (iterations) + iteration )*len(sources)+n+1, (max_iter * iterations)*len(sources)), flush=True)
+                print('=' * 100, flush=True)
+                print(command, flush=True)
+                print('=' * 100, flush=True)
+                os.system(command)
+
+                # parse file and set n_points
+                n_points2 = None
+                with open(n_points_file, "r") as reader:
+                    for line in reader:
+                        line = line.strip().split()
+                        key = line[0]
+                        value = line[-1]
+                        if key == 'n_points' and value != "None":
+                            n_points2 = int(value)
+
+                if not n_points2:
+                   continue
+
+                '''#Below code is not for domain sleection
+                elif n_points2 != len(Selected_IDS):
+                    print(f'n_points2({n_points2}) != len(Selected_IDS)({len(Selected_IDS)})', flush=True)
+                    pdb.set_trace()
+                '''
+
+                command = eval_run_command + ' --seed ' + str(seed) + ' '
+                print(command, flush=True)
+                os.system(command)
+
+                # parse file and set n_points
+                new_score = None
+                output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
+                with open(output_eval_file, "r") as reader:
+                    for line in reader:
+                        line = line.strip().split()
+                        key = line[0]
+                        value = line[-1]
+                        if key in ['acc']:
+                            new_score = float(value)
+                assert new_score
+                small_performance_dict.update({data_combination_name: new_score})
+                print("After tmc round: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
+                      full_performance_dict, flush=True)
+
             marginal_contribs[sources[idx]] = (new_score - old_score)
             marginal_contribs[sources[idx]] /= len(sources[idx])
             distance_to_full_score = np.abs(new_score - mean_score)
@@ -877,7 +931,7 @@ print(f'max_iter: {max_iter} save_every {save_every}, total {max_iter*save_every
 loo_dir = os.path.join(directory, 'loo.pkl')
 vals_loo = None
 if os.path.exists(loo_dir):
-    print(f'oading {loo_dir}', flush=True)
+    print(f'loading {loo_dir}', flush=True)
     data = pkl.load(open(loo_dir, 'rb'))
     vals_loo = data['loo']
     try:
@@ -890,7 +944,15 @@ if os.path.exists(loo_dir):
         print('n_points, etc were not stored ', flush=True)
 
 
+performance_dir = os.path.join(directory, 'perf.pkl')
+if os.path.exists(performance_dir):
+    print(f'loading {performance_dir}', flush=True)
+    data = pkl.load(open(performance_dir, 'rb'))
+    small_performance_dict = data['small_performance_dict']
+    full_performance_dict = data['full_performance_dict']
 
+print("Begining of run: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
+                      full_performance_dict, flush=True)
 
 if not n_points:
 
@@ -917,7 +979,7 @@ if not n_points:
         n_points = len(sources)
 
     # initial Eval on whole dataset
-    command = eval_run_command + ' --is_baseline_run --seed ' + str(seed) + ' ' + ' --data_size '+str(eval_data_size)
+    command = eval_run_command + ' --is_baseline_run --seed ' + str(seed)
     print(command, flush=True)
     os.system(command)
 
@@ -992,7 +1054,7 @@ def run_routine(tmc_run, train_run_command, eval_run_command, eval_data_size, nu
             pdb.set_trace()
         if tmc_run:
             # pdb.set_trace()
-            error_ = error(mem_tmc, min_convergence_iter=3)
+            error_ = error(mem_tmc, min_convergence_iter=20)
             print('=' * 50, flush=True)
             print(f'Error now {error_}, and err is {err}', flush=True)
             print('=' * 50, flush=True)
@@ -1006,13 +1068,17 @@ def run_routine(tmc_run, train_run_command, eval_run_command, eval_data_size, nu
                 print('=' * 120, flush=True)
                 old_shape = mem_tmc.shape[0]
                 mem_tmc, idxs_tmc = _tmc_shap(train_run_command + ' --num_train_epochs ' + str(num_train_epochs), \
-                                              eval_run_command + ' --data_size ' + str(eval_data_size), eval_output_dir, \
+                                              eval_run_command, eval_output_dir, \
                                               n_points_file, mem_tmc, idxs_tmc, random_score, mean_score, \
                                               n_points, save_every, seed, iter_counter, max_iter, tolerance, sources,
                                               print_step=1)
                 # sets vals_tmc (train_size,) 1d array
-                vals_tmc = np.mean(mem_tmc, 0)
-                assert mem_tmc.shape[0] - old_shape == save_every
+
+                if mem_tmc.shape[0] - old_shape != save_every:
+                    pdb.set_trace()
+                    # break
+                else:
+                    vals_tmc = np.mean(mem_tmc, 0)
 
         if directory is not None:
             if tmc_run:
@@ -1023,8 +1089,6 @@ def run_routine(tmc_run, train_run_command, eval_run_command, eval_data_size, nu
     print(f'error now{error(mem_tmc) }< err{err}: {err}')
     return  mem_tmc, idxs_tmc, vals_tmc
 
-
-
 if not load_shapley: mem_tmc, idxs_tmc, vals_tmc = run_routine(tmc_run, train_run_command, eval_run_command, eval_data_size, num_train_epochs, eval_output_dir,  n_points_file, mem_tmc, idxs_tmc, random_score, mean_score, n_points, save_every, seed, max_iter, tolerance, sources)
 
 mem_tmc, idxs_tmc, vals_tmc, mem_g, idxs_g, vals_g = merge_results(directory, n_points, sources)
@@ -1033,17 +1097,8 @@ vals_tmc = np.mean(np.concatenate([mem_tmc, vals_loo.reshape(1, -1)]), 0)
 
 shapley_value_plots(directory, [vals_tmc, vals_loo], n_points, num_plot_markers=20, sources=sources, name=name+'_'+str(n_points))
 
-# pdb.set_trace()
-
 perfs = performance_plots_adding(directory, [vals_tmc, vals_loo], train_task_name, eval_task_name,\
-                         train_run_command, eval_run_command, random_score, n_points, name=name+'_'+str(n_points),\
-                         num_plot_markers=20, sources=sources, rnd_iters=2, length=None)
-
-# pdb.set_trace()
-# performance_plots(directory, [vals_tmc, vals_loo], train_task_name, eval_task_name,\
-#                   train_run_command , eval_run_command, random_score, n_points, name=name+'_'+str(n_points), \
-#                   num_plot_markers=20, sources=sources, rnd_iters=2, length=None)
-
-# pdb.set_trace()
+                         train_run_command_full, eval_run_command_full, random_score, n_points, name=name+'_'+str(n_points),\
+                         num_plot_markers=20, sources=sources, rnd_iters=1, length=None)
 
 print("="*50, f'\nDone Shapely Values {vals_tmc}, Loo vals {vals_loo} Perfs {perfs}', "\n", "="*50, flush=True)
