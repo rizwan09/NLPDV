@@ -75,6 +75,7 @@ from transformers import sglue_convert_examples_to_features as convert_examples_
 from transformers import sglue_output_modes as output_modes
 from transformers import sglue_processors as processors
 
+
 import pdb
 
 
@@ -314,6 +315,9 @@ def evaluate(args, model, tokenizer, prefix="", is_binary=True):
     eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli"  else (args.task_name,)
     eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM") if args.task_name == "mnli"  else (args.output_dir,)
 
+    eval_task_names = (args.task_name,)
+    eval_outputs_dirs = (args.output_dir,)
+
     results = {}
     for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
         eval_dataset, random_init_result, n_points, unique_labels = load_and_cache_examples(args, eval_task, tokenizer, evaluate=True)
@@ -390,7 +394,7 @@ def evaluate(args, model, tokenizer, prefix="", is_binary=True):
 
 
 def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2):
-    args.data_dir = args.glue_dir+task.replace('-mm', '').upper()
+    args.data_dir = args.glue_dir+task[:4].upper() # all tasks's dir is the first 4letters like MNLI, etc
     if args.local_rank not in [-1, 0] and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
 
@@ -403,7 +407,7 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
             "dev" if evaluate else "train",
             list(filter(None, args.model_name_or_path.split("/"))).pop(),
             str(args.max_seq_length),
-            str(task),
+            str(task)
         ),
     )
     if os.path.exists(cached_features_file) and not args.overwrite_cache:
@@ -419,6 +423,7 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
         if task in ["mnli", "mnli-mm"] and args.model_type in ["roberta", "xlmroberta"]:
             # HACK(label indices are swapped in RoBERTa pretrained model)
             label_list[1], label_list[2] = label_list[2], label_list[1]
+
         examples = (
             processor.get_dev_examples(args.data_dir) if evaluate else processor.get_train_examples(args.data_dir)
         )
@@ -442,8 +447,10 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
     # Data Shepley debug
     if args.data_size:
         print(f'originial data size: {len(features)} truncated to {args.data_size}', flush=True)
-        start = int(len(features)/2)-args.data_size
-        features = features[start : start+args.data_size + 1 ]
+        # start = int(len(features)/2)-args.data_size
+        # features = features[start : start+args.data_size ]
+        features = random.choices(features, k=args.data_size)
+
     # if args.indices_to_delete_file_path and not evaluate:
     #     with open(args.indices_to_delete_file_path, "r") as reader:
     #         print("***** reading ids to remove *****", flush=True)
@@ -470,6 +477,9 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
         logger.info("=============================================================================")
         logger.info("random_init_result %s", str(random_init_result))
         logger.info("=============================================================================")
+
+    # if evaluate:
+    #     print(all_labels[:100], flush=True)
 
     return dataset, random_init_result, all_labels.shape[0],  all_labels.unique()
 
@@ -738,8 +748,17 @@ def main():
 
     # Training
     if args.do_train:
-        ALL_BINARY_TASKS = ["snli", "mnli", "qqp", "qnli"]
-        ALL_BINARY_TASKS.remove(args.task_name)
+        ALL_BINARY_TASKS = list(processors.keys())
+        ALL_BINARY_TASKS.remove('mnli-mm')
+        # 'mnli-mm' has been removed already it should never be in source domain
+        if args.task_name != 'mnli-mm':
+            ALL_BINARY_TASKS.remove(args.task_name)
+        if args.task_name != 'mnli':
+            # when target task is not mnli then ALL_BINARY_TASKS -= ['mnli', mnli-mm', args.task_name]
+            ALL_BINARY_TASKS.remove('mnli')
+        else:
+            # when target task is mnli (i.e., target is 'mnli-matched')
+            ALL_BINARY_TASKS = ["snli", "qqp", "qnli"]
 
         logger.info(" ALL_BINARY_TASKS = %s, task = %s args.indices_to_delete_file_path = %s", ALL_BINARY_TASKS, args.task_name, args.indices_to_delete_file_path)
         logger.info(" not evaluate = %s args.indices_to_delete_file_path and not evaluate=%s", not evaluate, args.indices_to_delete_file_path and not evaluate)
@@ -752,6 +771,8 @@ def main():
                 ALL_BINARY_TASKS = np.delete(np.array(ALL_BINARY_TASKS), ids, axis=0)
                 logger.info(" After delete ALL_BINARY_TASKS = %s", ALL_BINARY_TASKS)
 
+        ALL_BINARY_TASKS = np.random.permutation(ALL_BINARY_TASKS)
+        logger.info(" After Permutation ALL_BINARY_TASKS = %s", ALL_BINARY_TASKS)
         if len(ALL_BINARY_TASKS) > 0:
             train_dataset, random_init_result, n_train_points, unique_labels = \
                 load_and_cache_examples(args, ALL_BINARY_TASKS[0], tokenizer, evaluate=False)
@@ -761,7 +782,8 @@ def main():
                 load_and_cache_examples(args, task, tokenizer, evaluate=False)
             train_dataset += train_dataset2
             n_train_points += n_train_points2
-            unique_labels += unique_labels2
+            try: unique_labels += unique_labels2
+            except: pdb.set_trace()
 
         output_eval_file = os.path.join(args.output_dir, '', "eval_results.txt")
         with open(output_eval_file, "w") as writer:
