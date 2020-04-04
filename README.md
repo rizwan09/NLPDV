@@ -8,7 +8,7 @@
 
 python 3.6, [pytorch 1.3](https://pytorch.org/get-started/previous-versions/#commands-for-versions--100),  [tqdm](https://pypi.org/project/tqdm/), apex, huggingface transformers, 
 
-### Setup
+### Compute Shapley Values and identifies the positive-negative source domains
 
 Run the setup by running the [bash script](https://github.com/rizwan09/NLPDV/blob/master/transformers/script_run_sglue.py) as follows.
 
@@ -17,7 +17,14 @@ $ cd  NLPDV/transformers
 $ python script_run_sglue.py
 ```
 
+### To tune hyperparams or to report the final performance train on all positive source domains
 
+Run the setup by running the [bash script](https://github.com/rizwan09/NLPDV/blob/master/transformers/script_run_sglue_domain_binary_four_tasks.py) as follows. So far the corresponding source domains for QNLI and MNLI-mismatched are hardcoded. 
+
+```
+$ cd  NLPDV/transformers
+$ python script_run_sglue_domain_binary_four_tasks.py
+```
 
 #### Running experiments on CPU/GPU/Multi-GPU
 
@@ -26,5 +33,6 @@ $ python script_run_sglue.py
 ### Results
 
 [Google Spreadsheet](https://docs.google.com/spreadsheets/d/1SE5wuhJtb070C--nbBrMWaj8JI0wwk0v2EiIqPMOfc4/edit?usp=sharing)
+
 
 
