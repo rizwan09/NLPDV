@@ -26,6 +26,14 @@ $ cd  NLPDV/transformers
 $ python script_run_sglue_domain_binary_four_tasks.py
 ```
 
+### For Baseline POS tagger Perfromance
+
+```
+$ cd  NLPDV/transformers
+$  CUDA_VISIBLE_DEVICES=7 python run_flair.py &>> log/weblogs_baseline.txt &
+```
+
+
 #### Running experiments on CPU/GPU/Multi-GPU
 
 - Modify the gpu ids in CUDA_VISISBLE_DEVICES in [script_run_sglue.py](https://github.com/rizwan09/NLPDV/blob/master/transformers/script_run_sglue.py)
