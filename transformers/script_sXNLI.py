@@ -18,8 +18,8 @@ from tqdm import trange, tqdm
 # ______________________________________NLPDV____________________________________
 
 # Model params
-BASE_DATA_DIR = '/local/rizwan/UDTree/'
-run_file = './examples/run_multi_domain_pos.py'
+BASE_DATA_DIR = '/local/rizwan/NLPDV/XNLI'
+run_file = './examples/run_sxnli.py'
 # run_file= './examples/data_valuation.py'
 model_type = 'bert'
 train_model_name_or_path = 'bert-base-multilingual-cased'  # 'bert-large-uncased-whole-word-masking'
@@ -30,12 +30,11 @@ per_gpu_eval_batch_size = 32
 per_gpu_train_batch_size = 32
 learning_rate = 5e-5
 max_seq_length = 128
+save_steps = -1
 fp16 = True
 overwrite_cache = False
 
-# Task param
-# train_task_name = 'ud_english'
-# eval_task_name = 'ud_english'
+
 
 # CUDA gpus
 CUDA_VISIBLE_DEVICES = [ 0, 1, 2, 3, 4, 5]
@@ -43,13 +42,13 @@ CUDA_VISIBLE_DEVICES = [ 0, 1, 2, 3, 4, 5]
 # ______________________________________NLPDV____________________________________
 
 # Debug data size
-train_data_size = 3328
+train_data_size = 20000
 eval_data_size = 100000000
 cluster_size = 10
 cluster_num = train_data_size // cluster_size
 # Seed
 seed = 43
-max_iter = 30
+max_iter = 20
 save_every = 1
 # total _iter = max_iter x save_every
 tolerance = 0.2
@@ -71,38 +70,7 @@ load_removing_performance_plot = load_adding_performance_plot = True
 overwrite_directory = False
 load_shapley = False # True when just load shapley's when to plot only
 
-ALL_EVAL_TASKS = [
-        'UD_ARABIC',
-        'UD_BASQUE',
-        'UD_BULGARIAN',
-        'UD_CATALAN',
-        'UD_CHINESE',
-        'UD_CROATIAN',
-        'UD_CZECH',
-        'UD_DANISH',
-        'UD_DUTCH',
-        'UD_ENGLISH',
-        'UD_FINNISH',
-        'UD_FRENCH',
-        'UD_GERMAN',
-        'UD_HEBREW',
-        'UD_HINDI',
-        'UD_INDONESIAN',
-        'UD_ITALIAN',
-        'UD_JAPANESE',
-        'UD_KOREAN',
-        'UD_NORWEGIAN',
-        'UD_PERSIAN',
-        'UD_POLISH',
-        'UD_PORTUGUESE',
-        'UD_ROMANIAN',
-        'UD_RUSSIAN',
-        'UD_SERBIAN',
-        'UD_SLOVAK',
-        'UD_SLOVENIAN',
-        'UD_SPANISH',
-        'UD_SWEDISH',
-        'UD_TURKISH']
+ALL_EVAL_TASKS = 'es de el bg ru tr ar vi th zh hi sw ur en fr'.split()
 
 small_performance_dict = {eval_task_name: {} for eval_task_name in ALL_EVAL_TASKS}
 full_performance_dict = {eval_task_name: {} for eval_task_name in ALL_EVAL_TASKS}
@@ -113,8 +81,8 @@ for eval_task_name in ALL_EVAL_TASKS:
     print('-' * 50, flush=True)
     print("Task name: ", eval_task_name, flush=True)
     print('-' * 50, flush=True)
-    train_output_dir = 'temp/' + train_task_name + '_output_overlapping_ftmc/'  # +str(seed)+'/'
-    eval_output_dir = 'temp/' + eval_task_name + '_output_overlapping_ftmc/'  # +str(seed)+'/'
+    train_output_dir = 'temp/' + train_task_name + '_XNLI/'  # +str(seed)+'/'
+    eval_output_dir = 'temp/' + eval_task_name + '_XNLI/'  # +str(seed)+'/'
     loo_run = True
 
     directory = train_output_dir
@@ -122,38 +90,7 @@ for eval_task_name in ALL_EVAL_TASKS:
 
     n_points_file = os.path.join(train_output_dir, "training_results" + ".txt")
 
-    ALL_BINARY_TASKS = [
-        'UD_ARABIC',
-        'UD_BASQUE',
-        'UD_BULGARIAN',
-        'UD_CATALAN',
-        'UD_CHINESE',
-        'UD_CROATIAN',
-        'UD_CZECH',
-        'UD_DANISH',
-        'UD_DUTCH',
-        'UD_ENGLISH',
-        'UD_FINNISH',
-        'UD_FRENCH',
-        'UD_GERMAN',
-        'UD_HEBREW',
-        'UD_HINDI',
-        'UD_INDONESIAN',
-        'UD_ITALIAN',
-        'UD_JAPANESE',
-        'UD_KOREAN',
-        'UD_NORWEGIAN',
-        'UD_PERSIAN',
-        'UD_POLISH',
-        'UD_PORTUGUESE',
-        'UD_ROMANIAN',
-        'UD_RUSSIAN',
-        'UD_SERBIAN',
-        'UD_SLOVAK',
-        'UD_SLOVENIAN',
-        'UD_SPANISH',
-        'UD_SWEDISH',
-        'UD_TURKISH']
+    ALL_BINARY_TASKS = 'es de el bg ru tr ar vi th zh hi sw ur en fr'.split()
 
     DOMAIN_TRANSFER = True
 
@@ -187,7 +124,7 @@ for eval_task_name in ALL_EVAL_TASKS:
         per_gpu_eval_batch_size) + \
                    ' --per_gpu_train_batch_size=' + str(per_gpu_train_batch_size) + ' --learning_rate ' + str(
         learning_rate) \
-                   + ' --overwrite_output_dir '
+                   + ' --overwrite_output_dir ' + ' --save_steps ' + str(save_steps)
     if do_lower_case: run_command += '--do_lower_case '
     if fp16: run_command += ' --fp16 '
 
@@ -195,9 +132,8 @@ for eval_task_name in ALL_EVAL_TASKS:
         run_command += ' --overwrite_cache '
 
     # For training:
-    train_run_command_full = run_command + ' --do_train --task_name ' + train_task_name + \
-                             ' --data_dir ' + train_data_dir + ' --output_dir ' + \
-                             train_output_dir + ' --model_name_or_path ' + train_model_name_or_path
+    train_run_command_full = run_command + ' --do_train --data_dir ' + train_data_dir + ' --output_dir ' + \
+                             train_output_dir + ' --model_name_or_path ' + train_model_name_or_path + ' --language ' + eval_task_name
 
     train_run_command = train_run_command_full + ' --data_size ' + str(train_data_size)
 
@@ -205,7 +141,7 @@ for eval_task_name in ALL_EVAL_TASKS:
     eval_run_command_full = run_command + ' --do_eval --data_dir ' + eval_data_dir + ' --output_dir ' + eval_output_dir + \
                             ' --model_name_or_path ' + train_output_dir
 
-    eval_run_command = eval_run_command_full + ' --data_size ' + str(eval_data_size)
+    eval_run_command = eval_run_command_full
 
     n_points = None
 
@@ -260,8 +196,7 @@ for eval_task_name in ALL_EVAL_TASKS:
         Returns:
             Leave-one-out scores
         """
-        QQP_time = 0
-        QNLI_time = 0
+
         print('Starting LOO score calculations!', flush=True)
         vals_loo = np.zeros(n_points)
         counter = 0
@@ -300,7 +235,7 @@ for eval_task_name in ALL_EVAL_TASKS:
                     output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
                     print('For Eval_task: ', eval_task, ' Removing: ', output_eval_file, flush=True)
                     os.system('rm ' + output_eval_file)
-                    command = eval_run_command + ' --seed ' + str(seed) + ' ' + ' --task_name ' + eval_task
+                    command = eval_run_command + ' --seed ' + str(seed) + ' ' + ' --language ' + eval_task
                     print(command, flush=True)
                     os.system(command)
 
@@ -615,7 +550,7 @@ for eval_task_name in ALL_EVAL_TASKS:
                     continue 
                 '''
 
-                command = eval_run_command + ' --seed ' + str(seed) + ' '
+                command = eval_run_command + ' --seed ' + str(seed) + ' --language ' + eval_task_name
                 print('=' * 100, flush=True)
                 print(f'Evaluating _portion_performance for {val_} progress {i}/{len(plot_points)}', flush=True)
                 print(command, flush=True)
@@ -909,7 +844,7 @@ for eval_task_name in ALL_EVAL_TASKS:
                     print(f'n_points2({n_points2}) != len(keep_idxs)({len(keep_idxs)})', flush=True)
                     continue
                 '''
-                command = eval_run_command + ' --seed ' + str(seed) + ' '
+                command = eval_run_command + ' --seed ' + str(seed) + ' --language ' + eval_task_name
                 print('=' * 100, flush=True)
                 print(f'Evaluating _portion_performance_adding for {val_} progress {i}/{len(plot_points)}', flush=True)
                 print(command, flush=True)
@@ -1011,7 +946,7 @@ for eval_task_name in ALL_EVAL_TASKS:
                         output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
                         print('Removing: ', output_eval_file, flush=True)
                         os.system('rm ' + output_eval_file)
-                        command = eval_run_command + ' --seed ' + str(seed) + ' ' + ' --task_name ' + eval_task
+                        command = eval_run_command + ' --seed ' + str(seed) + ' ' + ' --language ' + eval_task
                         print(command, flush=True)
                         os.system(command)
 
@@ -1054,11 +989,12 @@ for eval_task_name in ALL_EVAL_TASKS:
                 np.reshape(idxs, (1, -1))
             ])
 
-            print("After tmc step: small_performance_dict: ", small_performance_dict,
-                  'full_performance_dict:',
-                  full_performance_dict, flush=True)
+
 
         return mem_tmc, idxs_tmc
+        print("After tmc iter: small_performance_dict: ", small_performance_dict,
+              'full_performance_dict:',
+              full_performance_dict, flush=True)
 
 
     # _______________________________________________________________________
@@ -1116,7 +1052,7 @@ for eval_task_name in ALL_EVAL_TASKS:
                 num_train_epochs) + ' --is_baseline_run --seed ' + str(
                 seed) + ' '
             print(command, flush=True)
-            os.system(command)
+            # os.system(command)
 
             # parse file and set n_points
             if not ALL_BINARY_TASKS:
@@ -1132,7 +1068,7 @@ for eval_task_name in ALL_EVAL_TASKS:
                 n_points = len(sources)
 
             # initial Eval on whole dataset
-            command = eval_run_command + ' --is_baseline_run --seed ' + str(seed) + ' ' + ' --task_name '+ eval_task_name
+            command = eval_run_command + ' --is_baseline_run --seed ' + str(seed) + ' ' + ' --language '+ eval_task_name
             print(command, flush=True)
             os.system(command)
 
@@ -1145,13 +1081,12 @@ for eval_task_name in ALL_EVAL_TASKS:
                     value = line[-1]
                     if key in ['acc']:
                         baseline_value = float(value)
-
+                    elif key == 'random_init_result':
+                        random_score = float(value)
+                    elif key == 'tol':
+                        tol = float(value)
                     elif key == 'mean_score':
                         mean_score = float(value)
-
-    random_score = 0.5 #baseline_value/3
-    mean_score = baseline_value
-
 
     if sources is None:
         sources = {i: np.array([i]) for i in range(n_points)}
