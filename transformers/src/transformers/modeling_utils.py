@@ -19,6 +19,8 @@
 import logging
 import os
 
+from memory_profiler import profile
+
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
@@ -284,6 +286,9 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
         # Only save the model itself if we are using distributed training
         model_to_save = self.module if hasattr(self, "module") else self
 
+        # Attach architecture to the config
+        model_to_save.config.architectures = [model_to_save.__class__.__name__]
+
         # Save configuration file
         model_to_save.config.save_pretrained(save_directory)
 
@@ -371,7 +376,6 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
-
         # Load config if we don't provide a configuration
         if not isinstance(config, PretrainedConfig):
             config_path = config if config is not None else pretrained_model_name_or_path
@@ -558,6 +562,10 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
         # Set model in evaluation mode to desactivate DropOut modules by default
         model.eval()
 
+        del resolved_archive_file, state_dict, archive_file, model_kwargs, metadata
+
+
+
         if output_loading_info:
             loading_info = {"missing_keys": missing_keys, "unexpected_keys": unexpected_keys, "error_msgs": error_msgs}
             return model, loading_info
@@ -583,7 +591,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
         self,
         input_ids=None,
         max_length=None,
-        do_sample=None,
+        do_sample=True,
         num_beams=None,
         temperature=None,
         top_k=None,
@@ -614,7 +622,7 @@ class PreTrainedModel(nn.Module, ModuleUtilsMixin):
                 The max length of the sequence to be generated.  Between 1 and infinity. Default to 20.
 
             do_sample: (`optional`) bool
-                If set to `False` greedy decoding is used. Otherwise sampling is used. Default to greedy sampling.
+                If set to `False` greedy decoding is used. Otherwise sampling is used. Defaults to `True`.
 
             num_beams: (`optional`) int
                 Number of beams for beam search. Must be between 1 and infinity. 1 means no beam search. Default to 1.
