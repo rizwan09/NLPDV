@@ -14,27 +14,20 @@ from tqdm import trange, tqdm
 
 # _______________________________________________________________________
 # ______________________________________NLPDV____________________________________
-# Task to evaluate (both train and eval should be same) The training dataset will be MNLI, SNLI, QQP, QNLI - train_task_name/eval_task_name
-train_task_name = 'QNLI'
-eval_task_name = 'QNLI'
-# CUDA gpus
+
 #gpu 0,2 on NLP9 are culprit gpu 3,4 on nlp8
-CUDA_VISIBLE_DEVICES = [0,1,6,5]
+CUDA_VISIBLE_DEVICES = [5,6,7]
 
-eval_data_size = 2000
-
-# Model params
-GLUE_DIR = '/home/rizwan/NLPDV/glue/'
-run_file = './examples/run_sglue.py'
-# run_file= './examples/data_valuation.py'
+BASE_DATA_DIR = '/home/rizwan/NLPDV/XNLI'
+run_file = './examples/run_sxnli.py'
 model_type = 'bert'
-train_model_name_or_path = 'bert-base-cased'
+train_model_name_or_path = 'bert-base-multilingual-cased'  # 'bert-large-uncased-whole-word-masking'
 do_lower_case = False
 num_train_epochs = 1.0
 num_eval_epochs = 2.0
-per_gpu_eval_batch_size =  32
+per_gpu_eval_batch_size = 32
 per_gpu_train_batch_size = 32
-learning_rate = 6e-5
+learning_rate = 5e-5
 max_seq_length = 128
 fp16 = True
 overwrite_cache = False
@@ -44,33 +37,6 @@ overwrite_cache = False
 #learning rates: 3e-4, 1e-4, 5e-5, 3e-5, 2e-5
 '''
 Runs:
-All results are on 500 dev on MNLI-mm shpley only removes QNLI
-lr: bz_sz 
-3e-4: 32, 16 (all 63.8 both), 
-5e-5: 32 (shpley 91 epoch-1, epoch-3 0.904, baseline 0.914 epoch-1, epoch-3 0.894, loo:88.55)
-5e-5: 16 (shpley 0.898, baseline 0.906, )
-3e-5: 32 (shpley 0.896, baseline 0.902, loo:87.8)
-2e-5: 32 (shpley 0.898, baseline )
-1e-4: 32 (shpley 0.8941212367778681, baseline 0.8909682668836453)
-
-
-
-Target: QNLI, dev set: 1100
-lr: bz_sz 
-3e-4: 32 (shpley , baseline: )
-3e-4: 16 (shpley , baseline: )
-
-1e-4: 32 (shpley 52.18, baseline: 0.4918181818181818  Loo: 0.4918181818181818)
-1e-4: 16 (shpley 52.36, baseline: 0.49272727272727274,  Loo: .49272727272727274)
-
-3e-5: 32 (shpley 52.72, baseline: 49.18181818181818, Loo: 0.515)
-3e-5: 16 (shpley 52.54, baseline: 0.4918181818181818, Loo:)
-
-5e-5: 32 (shpley 52.90, baseline: 50.79626578802856, Loo: 0.512)
-5e-5: 16 (shpley 52.09, baseline: 49.272727272727274, Loo: )
-
-
-
 '''
 best_learning_rate = 5e-5
 best_per_gpu_train_batch_size = 32
@@ -81,23 +47,28 @@ is_tune=True
 
 if not is_tune: num_train_epochs=3.0
 
-for eval_task_name in ['QNLI']:
+ALL_EVAL_TASKS = 'es de el bg ru tr ar vi th zh hi sw ur en fr'.split()
+
+for eval_task_name in ALL_EVAL_TASKS:
     train_task_name = eval_task_name
-    for is_Shapley in [True]:
+    for is_Shapley in [False]:
         for learning_rate in [ 5e-5]:
             for per_gpu_train_batch_size in [32]:
-                if learning_rate == 5e-5 and  per_gpu_train_batch_size == 32 and is_Shapley==False and eval_task_name=='QNLI': continue
-                if eval_task_name=='QNLI' and is_Shapley=='LOO': learning_rate=3e-5
-                if eval_task_name=='MNLI-mm' and is_Shapley!='LOO': continue
+
+
                 if is_Shapley=='LOO': train_output_dir = 'temp/' + train_task_name + '_output_LOO_'+str(per_gpu_train_batch_size) + '_'+str(learning_rate)  # +str(seed)+'/'
                 elif is_Shapley==True: train_output_dir = 'temp/' + train_task_name + '_output_Shapley_'+str(per_gpu_train_batch_size) + '_'+str(learning_rate)  # +str(seed)+'/'
+                elif is_Shapley == "BEST_SINGLE":
+                    train_output_dir = 'temp/' + train_task_name + '_output_BEST_SINGLE_' + str(
+                        per_gpu_train_batch_size) + '_' + str(learning_rate)  # +str(seed)+'/'
+
                 else:
                     train_output_dir = 'temp/' + train_task_name + '_output_baseline_'+str(per_gpu_train_batch_size) + '_'+str(learning_rate)  #
 
                 eval_output_dir = train_output_dir
 
-                train_data_dir = GLUE_DIR
-                eval_data_dir = GLUE_DIR
+                train_data_dir = BASE_DATA_DIR
+                eval_data_dir = BASE_DATA_DIR
                 seed = 43
 
                 directory = eval_output_dir
@@ -105,9 +76,7 @@ for eval_task_name in ['QNLI']:
                 if not os.path.exists(directory) :
                     os.makedirs(directory)
                     os.makedirs(os.path.join(directory, 'plots'))
-                # else:
-                #     print("Directory exists for safety skipping", flush=True)
-                #     continue
+
 
                 def write_indices_to_delete(indices_to_delete_file_path, ids):
                     with open(indices_to_delete_file_path, "w") as writer:
@@ -119,25 +88,20 @@ for eval_task_name in ['QNLI']:
 
                 # _______________________________________________________________________
                 # ______________________________________NLPDV____________________________________
-                ALL_BINARY_TASKS = ['snli', 'qqp', 'qnli', 'mnli-fiction', 'mnli-travel', 'mnli-slate', 'mnli-government',
-                                    'mnli-telephone']
-                if eval_task_name == 'MNLI': ALL_BINARY_TASKS = ['snli', 'qqp', 'qnli']
+                ALL_BINARY_TASKS = 'es de el bg ru tr ar vi th zh hi sw ur en fr'.split()
+
 
                 DOMAIN_TRANSFER = True
 
                 # _______________________________________________________________________
                 # ______________________________________NLPDV____________________________________
-                if eval_task_name.lower() in ALL_BINARY_TASKS: ALL_BINARY_TASKS.remove(eval_task_name.lower())
+                if eval_task_name in ALL_BINARY_TASKS: ALL_BINARY_TASKS.remove(eval_task_name)
 
 
-                if is_Shapley == 'LOO' and eval_task_name=="MNLI-mm":
-                    write_indices_to_delete(indices_to_delete_file_path, [6,7])
-                elif is_Shapley == True and eval_task_name=="MNLI-mm":
-                    write_indices_to_delete(indices_to_delete_file_path, [2])
-                if is_Shapley == 'LOO' and eval_task_name=="QNLI":
-                    write_indices_to_delete(indices_to_delete_file_path, [2,4,5,6,])
-                if is_Shapley == True and eval_task_name=="QNLI":
-                    write_indices_to_delete(indices_to_delete_file_path, [2,4,5])
+
+
+
+
 
                 run_command = "CUDA_VISIBLE_DEVICES=" + str(CUDA_VISIBLE_DEVICES[0])
                 for i in CUDA_VISIBLE_DEVICES[1:]:
@@ -160,24 +124,28 @@ for eval_task_name in ['QNLI']:
 
 
                 # For training:
-                train_run_command = run_command + ' --do_train --task_name ' + train_task_name + \
-                                    ' --data_dir ' + train_data_dir + ' --output_dir ' + \
-                                    train_output_dir + ' --model_name_or_path ' + train_model_name_or_path
-                if is_Shapley: train_run_command += ' --indices_to_delete_file_path ' + indices_to_delete_file_path
+                train_run_command_full = run_command + ' --do_train --data_dir ' + train_data_dir + ' --output_dir ' + \
+                                         train_output_dir + ' --model_name_or_path ' + train_model_name_or_path + ' --language ' + eval_task_name
 
+                train_run_command = train_run_command_full #train_run_command_full + ' --data_size ' + str(train_data_size)
 
                 # For eval:
-                eval_run_command = run_command + ' --do_eval --task_name ' + eval_task_name + \
-                                   ' --data_dir ' + eval_data_dir + ' --output_dir ' + train_output_dir + \
-                                   ' --model_name_or_path ' + train_output_dir + ' --seed '+str(seed)
+                eval_run_command_full = run_command + ' --do_eval --data_dir ' + eval_data_dir + ' --output_dir ' + eval_output_dir + \
+                                        ' --model_name_or_path ' + train_output_dir
 
-                command = train_run_command + ' --num_train_epochs ' + str(num_train_epochs) + ' --is_baseline_run '
+                eval_run_command = eval_run_command_full
+
+                if is_Shapley: train_run_command += ' --indices_to_delete_file_path ' + indices_to_delete_file_path
+
+                command = train_run_command + ' --num_train_epochs ' + str(num_train_epochs)
                 print(command, flush=True)
+
+
+
                 os.system(command)
 
                 # initial Eval on whole dataset
-                command = eval_run_command + ' --is_baseline_run  '
-                if is_tune: command +=   ' --data_size ' + str(eval_data_size)
+                command = eval_run_command
                 print(command, flush=True)
                 os.system(command)
 

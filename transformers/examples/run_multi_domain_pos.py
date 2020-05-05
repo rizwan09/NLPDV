@@ -342,9 +342,9 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
 def load_and_cache_examples(args, task, tokenizer, labels, pad_token_label_id, mode):
     args.data_dir = args.base_data_dir + task.lower()
     try:
-        print("old args.data_dir: ", args.data_dir, flush=True)
+        # print("old args.data_dir: ", args.data_dir, flush=True)
         args.data_dir = args.data_dir.replace('/home/rizwan/.flair/datasets/', '/local/rizwan/UDTree/')
-        print("new args.data_dir: ", args.data_dir, flush=True)
+        # print("new args.data_dir: ", args.data_dir, flush=True)
 
         if args.local_rank not in [-1, 0] and not evaluate:
             torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
@@ -582,7 +582,7 @@ def main():
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
 
     parser.add_argument("--logging_steps", type=int, default=500, help="Log every X updates steps.")
-    parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every X updates steps.")
+    parser.add_argument("--save_steps", type=int, default=10000000, help="Save checkpoint every X updates steps.")
     parser.add_argument(
         "--eval_all_checkpoints",
         action="store_true",
@@ -647,10 +647,18 @@ def main():
         "--LOO", action="store_true",
         help="Whether to calculate LOO or not?",
     )
+
+
+    parser.add_argument(
+        "--is_few_shot", action="store_true",
+        help="Whether to calculate LOO or not?",
+    )
+
     parser.add_argument(
         "--num_bags", default=20, type=int,
         help="How many bags to approximate the mean performance ",
     )
+
 
 
     args = parser.parse_args()
@@ -816,6 +824,12 @@ def main():
             train_dataset += train_dataset2
             n_train_points += n_train_points2
 
+        if args.is_few_shot:
+            train_dataset2, random_init_result2, n_train_points2 = \
+                load_and_cache_examples(args, args.task_name, tokenizer, labels, pad_token_label_id, mode="dev")
+            train_dataset += train_dataset2
+            n_train_points += n_train_points2
+
         output_eval_file = os.path.join(args.output_dir, '', "eval_results.txt")
         with open(output_eval_file, "w") as writer:
             logger.info("***** Creating Empty Eval results file *****")
@@ -891,13 +905,23 @@ def main():
                 for line in f:
                     if line.startswith("-DOCSTART-") or line == "" or line == "\n":
                         writer.write(line)
-                        if not predictions[example_id]:
-                            example_id += 1
-                    elif predictions[example_id]:
-                        output_line = line.split()[0] + " " + predictions[example_id].pop(0) + "\n"
-                        writer.write(output_line)
+                        try:
+                            if not predictions[example_id]:
+                                example_id += 1
+                        except:
+                            pass
                     else:
-                        logger.warning("Maximum sequence length exceeded: No prediction for '%s'.", line.split()[0])
+                        try:
+                            if predictions[example_id]:
+                                output_line = line.split()[0] + " " + predictions[example_id].pop(0) + "\n"
+                                writer.write(output_line)
+                            else:
+                                # logger.warning("Maximum sequence length exceeded: No prediction for '%s'.", line.split()[0])
+                                pass
+                        except:
+                            # logger.warning("Maximum sequence length exceeded: No prediction for '%s'.", line.split()[0])
+                            pass
+
 
     return results
 

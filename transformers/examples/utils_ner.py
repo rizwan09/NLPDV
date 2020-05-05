@@ -73,7 +73,7 @@ def read_examples_from_file(data_dir, mode):
                     # Examples could have no label for mode = "test"
                     labels.append("O")
         if words:
-            examples.append(InputExample(guid="%s-%d".format(mode, guid_index), words=words, labels=labels))
+            examples.append(InputExample(guid="{}-{}".format(mode, guid_index), words=words, labels=labels))
     return examples
 
 
@@ -196,12 +196,15 @@ def convert_examples_to_features(
     return features
 
 
-def get_labels(path):
+def get_labels(path, task='POS'):
     if path:
         with open(path, "r") as f:
             labels = f.read().splitlines()
-        if "O" not in labels:
-            labels = ["O"] + labels
+        # if "O" not in labels:
+        #     labels = ["O"] + labels
         return labels
     else:
-        return ["O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"]
+        # return ["O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"]
+        if task=='POS':
+            return ['SYM', 'NOUN', 'ADJ', '_', 'ADV', 'PUNCT', 'CCONJ', 'DET', 'PRON', \
+                'NUM', 'ADP', 'X', 'SCONJ', 'VERB', 'AUX', 'PART', 'PROPN', 'INTJ']

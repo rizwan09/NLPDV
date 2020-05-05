@@ -18,8 +18,8 @@ from tqdm import trange, tqdm
 # ______________________________________NLPDV____________________________________
 
 # Model params
-GLUE_DIR = '/home/rizwan/NLPDV/glue/'
-run_file = './examples/run_sglue.py'
+SENT_DIR = '/home/rizwan/NLPDV/mtl-dataset'
+run_file = './examples/run_review_sentiment.py'
 # run_file= './examples/data_valuation.py'
 model_type = 'bert'
 train_model_name_or_path = 'bert-base-cased'  # 'bert-large-uncased-whole-word-masking'
@@ -34,17 +34,17 @@ fp16 = True
 overwrite_cache = False
 
 # Task param
-train_task_name = 'SNLI'
-eval_task_name = 'SNLI'
+train_task_name = 'baby'
+eval_task_name = train_task_name
 
 # CUDA gpus
-CUDA_VISIBLE_DEVICES = [6,7]
+CUDA_VISIBLE_DEVICES = [0]
 # _______________________________________________________________________
 # ______________________________________NLPDV____________________________________
 
 # Debug data size
-train_data_size = 20000
-eval_data_size = 2000
+train_data_size = 2000
+eval_data_size = 1000
 cluster_size = 10
 cluster_num = train_data_size // cluster_size
 # Seed
@@ -68,17 +68,18 @@ load_removing_performance_plot = load_adding_performance_plot = True
 overwrite_directory = False  # True when just load shapley's when to plot only
 load_shapley = False
 
-train_output_dir = 'temp/' + train_task_name + '_output/'  # +str(seed)+'/' # For full training set train_output_dir = 'temp/' + train_task_name + '_output_full_training/'
-eval_output_dir = 'temp/' + eval_task_name + '_output/'  # +str(seed)+'/' # For full training set eval_output_dir = 'temp/' + eval_task_name + '_output_full_training/'
+train_output_dir = 'temp/' + train_task_name + '_output_full_training/'  # +str(seed)+'/' # For full training set train_output_dir = 'temp/' + train_task_name + '_output_full_training/'
+eval_output_dir = 'temp/' + eval_task_name + '_output_full_training/'  # +str(seed)+'/' # For full training set eval_output_dir = 'temp/' + eval_task_name + '_output_full_training/'
 
 directory = train_output_dir
 indices_to_delete_file_path = directory + '/indices_to_delete_file_path_' + str(seed) + '.json'
 
 n_points_file = os.path.join(train_output_dir, "training_results" + ".txt")
 
-ALL_BINARY_TASKS = ['snli', 'qqp', 'qnli', 'mnli-fiction', 'mnli-travel', 'mnli-slate', 'mnli-government',
-                    'mnli-telephone']
-if eval_task_name == 'MNLI': ALL_BINARY_TASKS = ['snli', 'qqp', 'qnli']
+ALL_BINARY_TASKS = ['kitchen_housewares', 'dvd', 'electronics', 'apparel', \
+                    'camera_photo', 'baby', 'health_personal_care', 'magazines', \
+                    'MR', 'software', 'video', 'toys_games', 'sports_outdoors']
+
 DOMAIN_TRANSFER = True
 
 # _______________________________________________________________________
@@ -90,8 +91,8 @@ if DOMAIN_TRANSFER:
 if load_shapley:
     tmc_run = False
 
-train_data_dir = GLUE_DIR
-eval_data_dir = GLUE_DIR
+train_data_dir = SENT_DIR
+eval_data_dir = SENT_DIR
 name = train_task_name + '_' + eval_task_name
 
 tol = None
@@ -133,38 +134,9 @@ eval_run_command = eval_run_command_full + ' --data_size ' + str(eval_data_size)
 
 small_performance_dict = {}
 full_performance_dict = {}
+
 n_points = None
 
-
-if eval_task_name =='MNLI-mm' and 'full_training' in train_output_dir:
-    small_performance_dict = full_performance_dict = {
-     'snli_qqp_qnli_mnli-fiction_mnli-travel_mnli-slate_mnli-government_mnli-telephone': 0.8905,
-     'qqp_qnli_mnli-fiction_mnli-travel_mnli-slate_mnli-government_mnli-telephone': 0.8875,
-     'snli_qnli_mnli-fiction_mnli-travel_mnli-slate_mnli-government_mnli-telephone': 0.8875,
-     'snli_qqp_mnli-fiction_mnli-travel_mnli-slate_mnli-government_mnli-telephone': 0.8875,
-     'snli_qqp_qnli_mnli-travel_mnli-slate_mnli-government_mnli-telephone': 0.8875,
-     'snli_qqp_qnli_mnli-fiction_mnli-slate_mnli-government_mnli-telephone': 0.8875,
-     'snli_qqp_qnli_mnli-fiction_mnli-travel_mnli-government_mnli-telephone': 0.8875,
-     'snli_qqp_qnli_mnli-fiction_mnli-travel_mnli-slate_mnli-telephone': 0.8875,
-     'snli_qqp_qnli_mnli-fiction_mnli-travel_mnli-slate_mnli-government': 0.8875}
-
-if eval_task_name =='QNLI' and 'full_training' in train_output_dir:
-    baseline_value = 0.508
-    mean_score = 0.5084249999999999
-    random_score = 0.5085
-    tol = 0.010168917100655303
-    n_points = len(sources)
-
-# for SNLI:
-# full_performance_dict = {'mnli-fiction': 0.8782767730136151, 'mnli-fiction_mnli-government': 0.8807153017679333,
-#       'mnli-fiction_mnli-slate_mnli-government': 0.8877260719365982,
-#       'mnli-fiction_mnli-travel_mnli-slate_mnli-government': 0.883357041251778,
-#       'mnli-fiction_mnli-travel_mnli-slate_mnli-government_mnli-telephone': 0.8908758382442593,
-# 'qqp_mnli-fiction_mnli-travel_mnli-slate_mnli-government_mnli-telephone': 0.8906726275147328}
-
-
-#For MNLI matched:
-# full_performance_dict: {'snli': 0.8231278655119715, 'snli_qqp': 0.8187468160978095, 'snli_qqp_qnli': 0.8079470198675497}
 
 
 # _______________________________________________________________________
@@ -971,7 +943,7 @@ def _tmc_shap(train_run_command, eval_run_command, eval_output_dir, n_points_fil
             distance_to_full_score = np.abs(new_score - mean_score)
             if distance_to_full_score <= tolerance * mean_score:
                 truncation_counter += 1
-                if truncation_counter > 3:
+                if truncation_counter > 5:
                     print('=' * 50, flush=True)
                     print('Truncation condition reached for this epoch! ', flush=True)
                     print('=' * 50, flush=True)
@@ -1089,6 +1061,16 @@ if sources is None:
 elif not isinstance(sources, dict):
     sources = {i: np.where(sources == i)[0] for i in set(sources)}
 n_sources = len(sources)
+
+
+single_mems = {lang: small_performance_dict[lang] for lang in ALL_BINARY_TASKS if
+                   lang in small_performance_dict}
+loo_mems = {'_'.join([id for id in ALL_BINARY_TASKS if id != lang]): small_performance_dict[
+    '_'.join([id for id in ALL_BINARY_TASKS if id != lang])] for lang in ALL_BINARY_TASKS}
+
+random_score = baseline_value #np.array(list(single_mems.values()) + [baseline_value] ).mean()
+
+
 
 mem_tmc = np.zeros((0,
                     n_points))  # (n_iter x n_points) #n_iter is basically n_(save_every) which can be a high value and it's not epoch
@@ -1221,6 +1203,7 @@ perfs = None
 # pdb.set_trace()
 print("=" * 50, f'\nDone Shapely Values {vals_tmc}, Loo vals {vals_loo} Perfs {perfs}', "\n", "=" * 50, flush=True)
 
+pdb.set_trace()
 
 '''
 Run notes:
@@ -1230,8 +1213,6 @@ Run notes:
 2) Calculate Shapley for MNLI-mm:
     -) Run with seed 43 with  shuffling line 771 np.random.permutation(ALL_BINARY_TASKS) in run_sglue.py 
     -) while 131/350 tmc is done: shufle it now
-    
-    -) Rerun with seed 43 normally 
 
 
 '''

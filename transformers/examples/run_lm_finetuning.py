@@ -195,6 +195,7 @@ def _rotate_checkpoints(args, checkpoint_prefix="checkpoint", use_mtime=False) -
 
 def mask_tokens(inputs: torch.Tensor, tokenizer: PreTrainedTokenizer, args) -> Tuple[torch.Tensor, torch.Tensor]:
     """ Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original. """
+    inputs = inputs.clone().type(dtype=torch.long)
     labels = inputs.clone()
     # We sample a few tokens in each sequence for masked-LM training (with probability args.mlm_probability defaults to 0.15 in Bert/RoBERTa)
     probability_matrix = torch.full(labels.shape, args.mlm_probability)
@@ -202,8 +203,9 @@ def mask_tokens(inputs: torch.Tensor, tokenizer: PreTrainedTokenizer, args) -> T
         tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()
     ]
     probability_matrix.masked_fill_(torch.tensor(special_tokens_mask, dtype=torch.bool), value=0.0)
-    padding_mask = labels.eq(tokenizer.pad_token_id)
-    probability_matrix.masked_fill_(padding_mask, value=0.0)
+    if tokenizer._pad_token is not None:
+        padding_mask = labels.eq(tokenizer.pad_token_id)
+        probability_matrix.masked_fill_(padding_mask, value=0.0)
     masked_indices = torch.bernoulli(probability_matrix).bool()
     labels[~masked_indices] = -100  # We only compute loss on masked tokens
 
@@ -228,6 +230,8 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
 
     def collate(examples: List[torch.Tensor]):
+        if tokenizer._pad_token is None:
+            return pad_sequence(examples, batch_first=True)
         return pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
 
     train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
@@ -421,6 +425,8 @@ def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefi
     # Note that DistributedSampler samples randomly
 
     def collate(examples: List[torch.Tensor]):
+        if tokenizer._pad_token is None:
+            return pad_sequence(examples, batch_first=True)
         return pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
 
     eval_sampler = SequentialSampler(eval_dataset)
@@ -569,8 +575,8 @@ def main():
     )
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
 
-    parser.add_argument("--logging_steps", type=int, default=50, help="Log every X updates steps.")
-    parser.add_argument("--save_steps", type=int, default=50, help="Save checkpoint every X updates steps.")
+    parser.add_argument("--logging_steps", type=int, default=500, help="Log every X updates steps.")
+    parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every X updates steps.")
     parser.add_argument(
         "--save_total_limit",
         type=int,

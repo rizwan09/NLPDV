@@ -70,10 +70,9 @@ from transformers import (
     XLNetTokenizer,
     get_linear_schedule_with_warmup,
 )
-from transformers import glue_compute_metrics as compute_metrics
-from transformers import sglue_convert_examples_to_features as convert_examples_to_features
-from transformers import sglue_output_modes as output_modes
-from transformers import sglue_processors as processors
+from transformers import review_sentiment_convert_examples_to_features as convert_examples_to_features
+from transformers import review_sentiment_output_modes as output_modes
+from transformers import review_sentiment_processors as processors
 
 
 import pdb
@@ -124,6 +123,9 @@ def set_seed(args):
     if args.n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
 
+def compute_metrics(task_name, preds, labels):
+        assert len(preds) == len(labels)
+        return {"acc": (preds == labels).mean()}
 
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
@@ -394,17 +396,26 @@ def evaluate(args, model, tokenizer, prefix="", is_binary=True):
 
 
 def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2):
-    args.data_dir = args.glue_dir+task[:4].upper() # all tasks's dir is the first 4letters like MNLI, etc
+    # args.data_dir = args.glue_dir+task
+    args.data_dir = args.glue_dir+'/'+task+'.task.'
     if args.local_rank not in [-1, 0] and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
 
     processor = processors[task]()
     output_mode = output_modes[task]
     # Load data features from cache or dataset file
+    if evaluate:
+        if not args.data_size:
+            tag = "test"
+        else:
+            tag = "dev"
+    else:
+        tag="train"
+
     cached_features_file = os.path.join(
-        args.data_dir,
+        args.glue_dir,
         "cached_{}_{}_{}_{}".format(
-            "dev" if evaluate else "train",
+            tag,
             list(filter(None, args.model_name_or_path.split("/"))).pop(),
             str(args.max_seq_length),
             str(task)
@@ -424,9 +435,15 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
             # HACK(label indices are swapped in RoBERTa pretrained model)
             label_list[1], label_list[2] = label_list[2], label_list[1]
 
-        examples = (
-            processor.get_dev_examples(args.data_dir) if evaluate else processor.get_train_examples(args.data_dir)
-        )
+        if evaluate:
+            if not args.data_size:
+                examples = ( processor.get_test_examples(args.data_dir) )
+            else:
+                examples = (processor.get_dev_examples(args.data_dir) )
+        else:
+            examples = (processor.get_train_examples(args.data_dir) )
+
+
         features = convert_examples_to_features(
             examples,
             tokenizer,
@@ -446,10 +463,10 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
 
     # Data Shepley debug
     if args.data_size:
-        print(f'originial data size: {len(features)} truncated to {args.data_size}', flush=True)
-        # start = int(len(features)/2)-args.data_size
-        # features = features[start : start+args.data_size ]
-        features = np.random.choice(features, args.data_size, replace=False)
+        if args.data_size<len(features):
+            print(f'originial data size: {len(features)} truncated to {args.data_size}', flush=True)
+            features = np.random.choice(features, args.data_size, replace=False)
+
 
     # Convert to Tensors and build dataset
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
@@ -467,11 +484,14 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
     if args.is_baseline_run and evaluate:
         n_points = len(all_labels)
         random_init_result = max(all_labels.bincount().float()/ n_points).numpy()
-        logger.info("-"*50)
+        logger.info("=============================================================================")
         logger.info("random_init_result %s", str(random_init_result))
-        logger.info("-"*50)
+        logger.info("=============================================================================")
 
-    return dataset, random_init_result, all_labels.shape[0],  list(all_labels.unique())
+    # if evaluate:
+    #     print(all_labels[:100], flush=True)
+
+    return dataset, random_init_result, all_labels.shape[0],  all_labels.unique()
 
 
 
@@ -701,7 +721,7 @@ def main():
     label_list = processor.get_labels()
     num_labels = len(label_list)
     # Hack for binary domain transfer task
-    num_labels = 3   #Alway 3 for all tasks max numlabels=3 (binary is label encoding but numlabels =3
+    # num_labels = 2   #Alway 3 for all tasks max numlabels=3 (binary is label encoding but numlabels =3
 
 
 
@@ -739,17 +759,7 @@ def main():
     # Training
     if args.do_train:
         ALL_BINARY_TASKS = list(processors.keys())
-        ALL_BINARY_TASKS.remove('mnli-mm')
-        # 'mnli-mm' has been removed already it should never be in source domain
-        if args.task_name != 'mnli-mm':
-            ALL_BINARY_TASKS.remove(args.task_name)
-        if args.task_name != 'mnli':
-            # when target task is not mnli then ALL_BINARY_TASKS -= ['mnli', mnli-mm', args.task_name]
-            ALL_BINARY_TASKS.remove('mnli')
-        else:
-            # when target task is mnli (i.e., target is 'mnli-matched')
-            ALL_BINARY_TASKS = ["snli", "qqp", "qnli"]
-
+        ALL_BINARY_TASKS.remove(args.task_name)
         logger.info(" ALL_BINARY_TASKS = %s, task = %s args.indices_to_delete_file_path = %s", ALL_BINARY_TASKS, args.task_name, args.indices_to_delete_file_path)
         logger.info(" not evaluate = %s args.indices_to_delete_file_path and not evaluate=%s", not evaluate, args.indices_to_delete_file_path and not evaluate)
         if args.indices_to_delete_file_path:
@@ -779,17 +789,20 @@ def main():
         with open(output_eval_file, "w") as writer:
             logger.info("***** Creating Empty Eval results file *****")
 
-        print('len(set(unique_labels)): ', len(set(unique_labels)), flush=True)
-        global_step, tr_loss = train(args, train_dataset, model, tokenizer)
-        logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
+        if unique_labels.unique().shape[0] == 2:
+            global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+            logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
-        output_eval_file = os.path.join(args.output_dir, "training_results" + ".txt")
-        with open(output_eval_file, "w") as writer:
-            logger.info("***** Writig Training dataset size  {} *****")
-            logger.info("%s = %s\n" % ('n_points', n_train_points))
-            writer.write("%s = %s\n" % ('n_points', n_train_points))
-
-
+            output_eval_file = os.path.join(args.output_dir, "training_results" + ".txt")
+            with open(output_eval_file, "w") as writer:
+                logger.info("***** Writig Training dataset size  {} *****")
+                logger.info("%s = %s\n" % ('n_points', n_train_points))
+                writer.write("%s = %s\n" % ('n_points', n_train_points))
+        else:
+            output_eval_file = os.path.join(args.output_dir, "training_results.txt")
+            with open(output_eval_file, "w") as writer:
+                logger.info("%s = None\n" % ('n_points Not Valid'))
+                writer.write("%s = %s\n" % ('n_points', "None"))
 
 
 

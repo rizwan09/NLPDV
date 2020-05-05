@@ -12,49 +12,50 @@ import shutil
 import numpy as np
 from tqdm import trange, tqdm
 
+# For full_training set None
+
 # _______________________________________________________________________
 # ______________________________________NLPDV____________________________________
 
 # Model params
-GLUE_DIR = '/home/rizwan/NLPDV/glue/'
-run_file = './examples/run_sglue.py'
+BASE_DATA_DIR = '/local/rizwan/NLPDV/XNLI'
+run_file = './examples/run_sxnli.py'
 # run_file= './examples/data_valuation.py'
 model_type = 'bert'
-train_model_name_or_path = 'bert-base-cased'  # 'bert-large-uncased-whole-word-masking'
+train_model_name_or_path = 'bert-base-multilingual-cased'  # 'bert-large-uncased-whole-word-masking'
 do_lower_case = False
 num_train_epochs = 1.0
 num_eval_epochs = 2.0
-per_gpu_eval_batch_size = 8
+per_gpu_eval_batch_size = 32
 per_gpu_train_batch_size = 32
 learning_rate = 5e-5
 max_seq_length = 128
+save_steps = -1
 fp16 = True
 overwrite_cache = False
 
-import time
 
-
-# Task param
-train_task_names = ['SNLI', 'QQP',]
-eval_task_names = train_task_names
 
 # CUDA gpus
-CUDA_VISIBLE_DEVICES = [2,5,6,7]
+CUDA_VISIBLE_DEVICES = [0,1,2,3]
 # _______________________________________________________________________
 # ______________________________________NLPDV____________________________________
 
 # Debug data size
-train_data_size = 20000
-eval_data_size = 2000
+train_data_size = 180000
+eval_data_size = 100000000
 cluster_size = 10
 cluster_num = train_data_size // cluster_size
 # Seed
 seed = 43
-max_iter = 50
+max_iter = 10
 save_every = 1
 # total _iter = max_iter x save_every
 tolerance = 0.2
 err = 0.3
+
+
+
 # _______________________________________________________________________
 # ______________________________________NLPDV____________________________________
 
@@ -66,46 +67,77 @@ tmc_run = True
 g_run = False
 load_removing_performance_plot = load_adding_performance_plot = True
 
-overwrite_directory = False  # True when just load shapley's when to plot only
-load_shapley = False
+overwrite_directory = False
+load_shapley = False # True when just load shapley's when to plot only
 
-small_performance_dict = { eval_task_name: {} for eval_task_name in eval_task_names}
-full_performance_dict = { eval_task_name: {} for eval_task_name in eval_task_names}
+ALL_EVAL_TASKS = 'es de el bg ru tr ar vi th zh hi sw ur en fr'.split()
+
+small_performance_dict = {
+    'es': {'de_el_bg_ru_tr_ar_vi_th_zh_hi_sw_ur_en_fr': 0.7738955823293173,
+           'el_bg_ru_tr_ar_vi_th_zh_hi_sw_ur_en_fr': 0.7734939759036145,
+           'de_bg_ru_tr_ar_vi_th_zh_hi_sw_ur_en_fr': 0.7763052208835342,
+           'de_el_ru_tr_ar_vi_th_zh_hi_sw_ur_en_fr': 0.7742971887550201,
+           'de_el_bg_tr_ar_vi_th_zh_hi_sw_ur_en_fr': 0.7738955823293173,
+           'de_el_bg_ru_ar_vi_th_zh_hi_sw_ur_en_fr': 0.770281124497992,
+           'de_el_bg_ru_tr_vi_th_zh_hi_sw_ur_en_fr': 0.7682730923694779,
+           'de_el_bg_ru_tr_ar_th_zh_hi_sw_ur_en_fr': 0.7751004016064257,
+           'de_el_bg_ru_tr_ar_vi_zh_hi_sw_ur_en_fr': 0.7763052208835342,
+           'de_el_bg_ru_tr_ar_vi_th_hi_sw_ur_en_fr': 0.772289156626506,
+           'de_el_bg_ru_tr_ar_vi_th_zh_sw_ur_en_fr': 0.7694779116465863,
+           'de_el_bg_ru_tr_ar_vi_th_zh_hi_ur_en_fr': 0.7799196787148595,
+           'de_el_bg_ru_tr_ar_vi_th_zh_hi_sw_en_fr': 0.7714859437751004,
+           'de_el_bg_ru_tr_ar_vi_th_zh_hi_sw_ur_fr': 0.7650602409638554,
+           'de_el_bg_ru_tr_ar_vi_th_zh_hi_sw_ur_en': 0.7626506024096386},
+                          'de': {'el_bg_ru_tr_ar_vi_th_zh_hi_sw_ur_en_fr': 0.7421686746987952},
+                          'el': {'de_bg_ru_tr_ar_vi_th_zh_hi_sw_ur_en_fr': 0.7016064257028113},
+                          'bg': {'de_el_ru_tr_ar_vi_th_zh_hi_sw_ur_en_fr': 0.7224899598393574},
+                          'ru': {'de_el_bg_tr_ar_vi_th_zh_hi_sw_ur_en_fr': 0.7216867469879518},
+                          'tr': {'de_el_bg_ru_ar_vi_th_zh_hi_sw_ur_en_fr': 0.6654618473895583},
+                          'ar': {'de_el_bg_ru_tr_vi_th_zh_hi_sw_ur_en_fr': 0.6839357429718875},
+                          'vi': {'de_el_bg_ru_tr_ar_th_zh_hi_sw_ur_en_fr': 0.7393574297188755},
+                          'th': {'de_el_bg_ru_tr_ar_vi_zh_hi_sw_ur_en_fr': 0.5923694779116466},
+                          'zh': {'de_el_bg_ru_tr_ar_vi_th_hi_sw_ur_en_fr': 0.7465863453815261},
+                          'hi': {'de_el_bg_ru_tr_ar_vi_th_zh_sw_ur_en_fr': 0.6622489959839357},
+                          'sw': {'de_el_bg_ru_tr_ar_vi_th_zh_hi_ur_en_fr': 0.5381526104417671},
+                          'ur': {'de_el_bg_ru_tr_ar_vi_th_zh_hi_sw_en_fr': 0.6365461847389559},
+                          'en': {'de_el_bg_ru_tr_ar_vi_th_zh_hi_sw_ur_fr': 0.8036144578313253},
+                          'fr': {'de_el_bg_ru_tr_ar_vi_th_zh_hi_sw_ur_en': 0.7586345381526104}}
 
 
+print('small_performance_dict: ', small_performance_dict, flush=True)
 
-for eval_task_name in eval_task_names:
-    QQP_time = 0
-    QNLI_time = 0
+full_performance_dict = {eval_task_name: {} for eval_task_name in ALL_EVAL_TASKS}
+
+for eval_task_name in ALL_EVAL_TASKS[1:]:
+
     train_task_name = eval_task_name
-    print('-'*50, flush=True)
+    print('-' * 50, flush=True)
     print("Task name: ", eval_task_name, flush=True)
     print('-' * 50, flush=True)
-    train_output_dir = 'temp/' + train_task_name + '_output_overlapping_ftmc/'  # +str(seed)+'/'
-    eval_output_dir = 'temp/' + eval_task_name + '_output_overlapping_ftmc/'  # +str(seed)+'/'
-    loo_run=True
+    train_output_dir = 'temp/' + train_task_name + '_XNLI/'  # +str(seed)+'/'
+    eval_output_dir = 'temp/' + eval_task_name + '_XNLI/'  # +str(seed)+'/'
+    loo_run = True
 
     directory = train_output_dir
     indices_to_delete_file_path = directory + '/indices_to_delete_file_path_' + str(seed) + '.json'
 
     n_points_file = os.path.join(train_output_dir, "training_results" + ".txt")
 
-    ALL_BINARY_TASKS = ['snli', 'qqp', 'qnli', 'mnli-fiction', 'mnli-travel', 'mnli-slate', 'mnli-government',
-                        'mnli-telephone']
-    if eval_task_name == 'MNLI': ALL_BINARY_TASKS = ['snli', 'qqp', 'qnli']
+    ALL_BINARY_TASKS = 'es de el bg ru tr ar vi th zh hi sw ur en fr'.split()
+
     DOMAIN_TRANSFER = True
 
     # _______________________________________________________________________
     # ______________________________________NLPDV____________________________________
-    if eval_task_name.lower() in ALL_BINARY_TASKS: ALL_BINARY_TASKS.remove(eval_task_name.lower())
+    if eval_task_name in ALL_BINARY_TASKS: ALL_BINARY_TASKS.remove(eval_task_name)
     if DOMAIN_TRANSFER:
         sources = np.arange(len(ALL_BINARY_TASKS))
 
     if load_shapley:
         tmc_run = False
 
-    train_data_dir = GLUE_DIR
-    eval_data_dir = GLUE_DIR
+    train_data_dir = eval_data_dir = BASE_DATA_DIR
+
     name = train_task_name + '_' + eval_task_name
 
     tol = None
@@ -123,8 +155,9 @@ for eval_task_name in eval_task_names:
     run_command += ' ' + run_file + ' ' + ' --model_type ' + model_type + \
                    ' --max_seq_length ' + str(max_seq_length) + ' --per_gpu_eval_batch_size=' + str(
         per_gpu_eval_batch_size) + \
-                   ' --per_gpu_train_batch_size=' + str(per_gpu_train_batch_size) + ' --learning_rate ' + str(learning_rate) \
-                   + ' --overwrite_output_dir '
+                   ' --per_gpu_train_batch_size=' + str(per_gpu_train_batch_size) + ' --learning_rate ' + str(
+        learning_rate) \
+                   + ' --overwrite_output_dir ' + ' --save_steps ' + str(save_steps)
     if do_lower_case: run_command += '--do_lower_case '
     if fp16: run_command += ' --fp16 '
 
@@ -132,9 +165,8 @@ for eval_task_name in eval_task_names:
         run_command += ' --overwrite_cache '
 
     # For training:
-    train_run_command_full = run_command + ' --do_train --task_name ' + train_task_name + \
-                             ' --data_dir ' + train_data_dir + ' --output_dir ' + \
-                             train_output_dir + ' --model_name_or_path ' + train_model_name_or_path
+    train_run_command_full = run_command + ' --do_train --data_dir ' + train_data_dir + ' --output_dir ' + \
+                             train_output_dir + ' --model_name_or_path ' + train_model_name_or_path + ' --language ' + eval_task_name
 
     train_run_command = train_run_command_full + ' --data_size ' + str(train_data_size)
 
@@ -142,10 +174,10 @@ for eval_task_name in eval_task_names:
     eval_run_command_full = run_command + ' --do_eval --data_dir ' + eval_data_dir + ' --output_dir ' + eval_output_dir + \
                             ' --model_name_or_path ' + train_output_dir
 
-    eval_run_command = eval_run_command_full + ' --data_size ' + str(eval_data_size)
-
+    eval_run_command = eval_run_command_full
 
     n_points = None
+
 
     # _______________________________________________________________________
     # ______________________________________NLPDV____________________________________
@@ -197,8 +229,7 @@ for eval_task_name in eval_task_names:
         Returns:
             Leave-one-out scores
         """
-        QQP_time = 0
-        QNLI_time = 0
+
         print('Starting LOO score calculations!', flush=True)
         vals_loo = np.zeros(n_points)
         counter = 0
@@ -220,7 +251,7 @@ for eval_task_name in eval_task_names:
                 write_indices_to_delete(indices_to_delete_file_path, sources[i])
                 command = train_run_command + ' --LOO --seed ' + str(
                     seed) + ' --indices_to_delete_file_path ' + indices_to_delete_file_path
-                print(command)
+                print(command, flush=True)
                 os.system(command)
 
                 # parse file and set n_points
@@ -232,12 +263,12 @@ for eval_task_name in eval_task_names:
                         if key == 'n_points':
                             n_points2 = int(value)
 
-                for eval_task in eval_task_names:
-                    t = time.time()
+                for eval_task in ALL_EVAL_TASKS:
+                    if eval_task in data_combination_name: continue
                     output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
                     print('For Eval_task: ', eval_task, ' Removing: ', output_eval_file, flush=True)
                     os.system('rm ' + output_eval_file)
-                    command = eval_run_command + ' --seed ' + str(seed) + ' ' + ' --task_name '+eval_task
+                    command = eval_run_command + ' --seed ' + str(seed) + ' ' + ' --language ' + eval_task
                     print(command, flush=True)
                     os.system(command)
 
@@ -254,18 +285,16 @@ for eval_task_name in eval_task_names:
                     assert new_score2
                     small_performance_dict[eval_task].update({data_combination_name: new_score2})
 
-                    print("After Loo: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
-                          full_performance_dict, flush=True)
-                    if eval_task_name=='QQP':
-                        QQP_time += time.time() - t
-                    if eval_task_name == 'QNLI':
-                        QNLI_time += time.time() - t
+
+
 
             removed_value = small_performance_dict[eval_task_name][data_combination_name]
             if not removed_value: pdb.set_trace()
             vals_loo[sources[i]] = (baseline_value - removed_value)
             vals_loo[sources[i]] /= len(sources[i])
 
+        print("After Loo: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
+              full_performance_dict, flush=True)
 
         return vals_loo
 
@@ -368,7 +397,8 @@ for eval_task_name in eval_task_names:
 
 
     def performance_plots(directory, vals, train_task_name, eval_task_name, train_run_command, eval_run_command, \
-                          random_score, n_points, name=None, num_plot_markers=20, sources=None, rnd_iters=2, length=None):
+                          random_score, n_points, name=None, num_plot_markers=20, sources=None, rnd_iters=2,
+                          length=None):
         """Plots the effect of removing valuable points.
 
         Args:
@@ -437,7 +467,8 @@ for eval_task_name in eval_task_names:
 
                     rnd.append(_portion_performance(np.random.permutation( \
                         np.argsort(vals_sources[0])[::-1]), plot_points, \
-                        train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd', itr=itr,
+                        train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd',
+                        itr=itr,
                         max_itr=rnd_iters))
 
             else:
@@ -463,7 +494,8 @@ for eval_task_name in eval_task_names:
 
                     rnd.append(_portion_performance(np.random.permutation( \
                         np.argsort(vals_sources[0])[::-1][:length]), plot_points[:length], \
-                        train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd', itr=itr,
+                        train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd',
+                        itr=itr,
                         max_itr=rnd_iters))
 
             rnd = np.mean(rnd, 0)
@@ -492,7 +524,8 @@ for eval_task_name in eval_task_names:
             plt.close()
 
 
-    def _portion_performance(idxs, plot_points, train_run_command, eval_run_command, random_score, n_points, sources=None,
+    def _portion_performance(idxs, plot_points, train_run_command, eval_run_command, random_score, n_points,
+                             sources=None,
                              val_='TMC_SHAPLEY', itr=None, max_itr=None):
         """Given a set of indexes, starts removing points from
         the first elemnt and evaluates the new model after
@@ -543,14 +576,14 @@ for eval_task_name in eval_task_names:
                 if not n_points2:
                     scores.append(random_score)
                     continue
-    
-    
+
+
                 elif n_points2 != len(keep_idxs):
                     print(f'n_points2({n_points2}) != len(keep_idxs)({len(keep_idxs)} in removing plots)', flush=True)
                     continue 
                 '''
 
-                command = eval_run_command + ' --seed ' + str(seed) + ' '
+                command = eval_run_command + ' --seed ' + str(seed) + ' --language ' + eval_task_name
                 print('=' * 100, flush=True)
                 print(f'Evaluating _portion_performance for {val_} progress {i}/{len(plot_points)}', flush=True)
                 print(command, flush=True)
@@ -569,9 +602,9 @@ for eval_task_name in eval_task_names:
                             new_score = float(value)
                 assert new_score
                 full_performance_dict[eval_task_name].update({data_combination_name: new_score})
-                print("After _portion_performance small_performance_dict: ", small_performance_dict,
-                      'full_performance_dict:',
-                      full_performance_dict, flush=True)
+                # print("After _portion_performance small_performance_dict: ", small_performance_dict,
+                #       'full_performance_dict:',
+                #       full_performance_dict, flush=True)
 
             scores.append(new_score)
 
@@ -613,7 +646,7 @@ for eval_task_name in eval_task_names:
             num_plot_markers = len(sources.keys())
         plot_points = np.arange(
             0,
-            max(len(sources.keys()) - 1, num_plot_markers),
+            max(len(sources.keys()), num_plot_markers),
             max(len(sources.keys()) // num_plot_markers, 1)
         )
 
@@ -681,8 +714,6 @@ for eval_task_name in eval_task_names:
         adding_performance_dir = os.path.join(directory, train_task_name + '_' + eval_task_name + '_' + str(
             n_points) + '_' + name + '_adding_performance.pkl')
 
-
-
         if os.path.exists(adding_performance_dir) and load_adding_performance_plot:
             print(f'loading {adding_performance_dir}', flush=True)
             data = pkl.load(open(adding_performance_dir, 'rb'))
@@ -721,8 +752,9 @@ for eval_task_name in eval_task_names:
                     rnd_prmtn = np.random.permutation( \
                         np.argsort(vals_sources[0])[::-1])
                     rnd.append(_portion_performance_addition(rnd_prmtn, plot_points, \
-                        train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd', itr=itr,
-                        max_itr=rnd_iters))
+                                                             train_run_command, eval_run_command, random_score,
+                                                             n_points, sources=sources, val_='rnd', itr=itr,
+                                                             max_itr=rnd_iters))
 
             else:
                 perfs = []
@@ -749,12 +781,13 @@ for eval_task_name in eval_task_names:
                     print("=" * 60, flush=True)
                     rnd_prmtn = np.random.permutation(np.argsort(vals_sources[0])[::-1])
                     rnd.append(_portion_performance_addition(rnd_prmtn[:length], plot_points[:length], \
-                        train_run_command, eval_run_command, random_score, n_points, sources=sources, val_='rnd', itr=itr,
-                        max_itr=rnd_iters))
+                                                             train_run_command, eval_run_command, random_score,
+                                                             n_points, sources=sources, val_='rnd', itr=itr,
+                                                             max_itr=rnd_iters))
 
             rnd = np.mean(rnd, 0)
 
-            data_dict = {'perfs': perfs, 'rnd': rnd, 'rnd_prmtn':rnd_prmtn}
+            data_dict = {'perfs': perfs, 'rnd': rnd, 'rnd_prmtn': rnd_prmtn}
             pkl.dump(data_dict, open(adding_performance_dir, 'wb'))
 
         plt.plot(plot_points / n_points * 100, perfs[0] * 100,
@@ -844,7 +877,7 @@ for eval_task_name in eval_task_names:
                     print(f'n_points2({n_points2}) != len(keep_idxs)({len(keep_idxs)})', flush=True)
                     continue
                 '''
-                command = eval_run_command + ' --seed ' + str(seed) + ' '
+                command = eval_run_command + ' --seed ' + str(seed) + ' --language ' + eval_task_name
                 print('=' * 100, flush=True)
                 print(f'Evaluating _portion_performance_adding for {val_} progress {i}/{len(plot_points)}', flush=True)
                 print(command, flush=True)
@@ -884,8 +917,7 @@ for eval_task_name in eval_task_names:
                    individual points. In the format of an assignment array
                    or dict.
         """
-        QQP_time = 0
-        QNLI_time = 0
+
         for iteration in trange(iterations, desc='Inside one iter/save_every'):
             # if print_step * (iteration + 1) / iterations % 1 == 0:
             if (iteration + 1) % print_step == 0:
@@ -942,12 +974,12 @@ for eval_task_name in eval_task_names:
                         pdb.set_trace()
                     '''
 
-                    for eval_task in eval_task_names:
-                        t = time.time()
+                    for eval_task in ALL_EVAL_TASKS:
+                        if eval_task in data_combination_name: continue
                         output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
                         print('Removing: ', output_eval_file, flush=True)
                         os.system('rm ' + output_eval_file)
-                        command = eval_run_command + ' --seed ' + str(seed) + ' ' + ' --task_name '+eval_task
+                        command = eval_run_command + ' --seed ' + str(seed) + ' ' + ' --language ' + eval_task
                         print(command, flush=True)
                         os.system(command)
 
@@ -963,12 +995,8 @@ for eval_task_name in eval_task_names:
                         assert new_score2
                         small_performance_dict[eval_task].update({data_combination_name: new_score2})
 
-                        print("After tmc step: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
-                              full_performance_dict, flush=True)
-                        if eval_task_name=='QQP':
-                            QQP_time += time.time()
-                        if eval_task_name == 'QNLI':
-                            QNLI_time += time.time() - t
+
+
 
                 new_score = small_performance_dict[eval_task_name][data_combination_name]
 
@@ -993,12 +1021,16 @@ for eval_task_name in eval_task_names:
                 idxs_tmc,
                 np.reshape(idxs, (1, -1))
             ])
-        return mem_tmc, idxs_tmc, QQP_time, QNLI_time
+
+
+
+        return mem_tmc, idxs_tmc
+
 
 
     # _______________________________________________________________________
     # ______________________________________NLPDV____________________________________
-    # pdb.set_trace()
+
     # Create Shapley Directory
     if overwrite_directory and os.path.exists(directory):
         print('deleting recursive all previous files', flush=True)
@@ -1032,24 +1064,34 @@ for eval_task_name in eval_task_names:
         data = pkl.load(open(performance_dir, 'rb'))
         small_performance_dict = data['small_performance_dict']
         full_performance_dict = data['full_performance_dict']
-        if eval_task_name not in small_performance_dict:
-            small_performance_dict[eval_task_name] = {}
-            full_performance_dict[eval_task_name] = {}
 
-    print("Begining of run: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
-          full_performance_dict, flush=True)
+    # print("Begining of run: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
+    #       full_performance_dict, flush=True)
+
+    if sources is None:
+        sources = {i: np.array([i]) for i in range(n_points)}
+    elif not isinstance(sources, dict):
+        sources = {i: np.where(sources == i)[0] for i in set(sources)}
+    n_sources = len(sources)
+
+    data_combination = sorted(list(sources.keys()))
+    data_combination_name = '_'.join([ALL_BINARY_TASKS[id] for id in data_combination])
 
     try:
         baseline_value
     except:
-        if not n_points:
+        if data_combination_name in small_performance_dict[eval_task_name]:
+            baseline_value = small_performance_dict[eval_task_name][data_combination_name]
+        elif not n_points:
+
 
             print('=' * 50, flush=True)
             print('Running baseline runs', flush=True)
             print('=' * 50, flush=True)
 
             # initial Training on whole dataset
-            command = train_run_command + ' --num_train_epochs ' + str(num_train_epochs) + ' --is_baseline_run --seed ' + str(
+            command = train_run_command + ' --num_train_epochs ' + str(
+                num_train_epochs) + ' --is_baseline_run --seed ' + str(
                 seed) + ' '
             print(command, flush=True)
             os.system(command)
@@ -1068,7 +1110,7 @@ for eval_task_name in eval_task_names:
                 n_points = len(sources)
 
             # initial Eval on whole dataset
-            command = eval_run_command + ' --is_baseline_run --seed ' + str(seed) + ' --task_name '+eval_task_name
+            command = eval_run_command + ' --is_baseline_run --seed ' + str(seed) + ' ' + ' --language '+ eval_task_name
             print(command, flush=True)
             os.system(command)
 
@@ -1088,22 +1130,82 @@ for eval_task_name in eval_task_names:
                     elif key == 'mean_score':
                         mean_score = float(value)
 
-    if sources is None:
-        sources = {i: np.array([i]) for i in range(n_points)}
-    elif not isinstance(sources, dict):
-        sources = {i: np.where(sources == i)[0] for i in set(sources)}
-    n_sources = len(sources)
 
 
-    #must be set after first round.
-    # single_mems = {lang: small_performance_dict[eval_task_name][lang] for lang in ALL_BINARY_TASKS if
-    #                lang in small_performance_dict[eval_task_name]}
-    # loo_mems = {'_'.join([id for id in ALL_BINARY_TASKS if id != lang]): small_performance_dict[eval_task_name][
-    #     '_'.join([id for id in ALL_BINARY_TASKS if id != lang])] for lang in ALL_BINARY_TASKS}
+    if not n_points: n_points = len(sources)
+    try:
+        random_score
+    except:
 
-    # random_score = np.array(list(single_mems.values()) + [baseline_value] ).mean()
+        random_score = baseline_value #0.5
+        mean_score = baseline_value
+    if eval_task_name=='es':random_score = baseline_value
+
+    single_mems = {lang: small_performance_dict[eval_task_name][lang] for lang in ALL_BINARY_TASKS if
+                   lang in small_performance_dict[eval_task_name]}
+
+    loo_mems = { '_'.join([id for id in ALL_BINARY_TASKS if id!= lang]): small_performance_dict[eval_task_name]['_'.join([id for id in ALL_BINARY_TASKS if id!= lang])]  for lang in ALL_BINARY_TASKS }
+
+    random_score =   np.array(list(single_mems.values()) + [baseline_value]    ).mean()
 
 
+    ''' for de 
+    
+    # with random_score = baseline:
+    # [5.29390288e-03
+    # 7.30193501e-05 - 3.68747718e-03 - 3.68747718e-03
+    # -3.13983206e-03
+    # 2.81124498e-03
+    # 1.49689668e-03
+    # 4.52719971e-03
+    # 4.49069003e-03 - 2.59218693e-03 - 1.91675794e-02 - 1.09163928e-02
+    # 3.65096751e-03
+    # 4.52719971e-03]
+
+    # with random_score =  np.array(list(single_mems.values()) + [baseline_value] +   list(loo_mems.values())   ).mean()
+    # [0.00516351  0.00129327 - 0.00232119 - 0.00262718 - 0.00226382  0.00235227
+    #  0.00259371  0.00434117  0.00407344 - 0.00144148 - 0.01758941 - 0.0102577
+    #  0.00384395  0.00582568]
+
+    #random_score =  np.array(list(single_mems.values()) + [baseline_value]   ).mean()
+    # Done Shapely Values [ 0.0052939   0.00611902  0.00235853  0.00235853  0.00290617  0.00281124
+    #   0.0075429   0.0045272   0.00449069  0.00345382 -0.00707558 -0.00487039
+    #   0.00365097  0.0105732 ], Loo vals [ 0.00803213  0.00682731  0.          0.0064257   0.01084337  0.0124498
+    #   0.01084337  0.00843373  0.01325301  0.00562249  0.0124498   0.00763052
+    #  -0.00040161  0.00963855] Perfs None
+    
+    
+    
+    
+    
+    for es:
+    # with random_score =  np.array(list(single_mems.values()) + [baseline_value]   ).mean()
+    Done Shapely Values [ 0.00310332  0.01043812  0.00262505  0.00160277  0.00010588  0.00372399
+  0.00576488  0.00346842  0.00328587  0.00262505 -0.00858708 -0.00869295
+  0.00854326  0.01401606], Loo vals [ 0.00040161 -0.00240964 -0.00040161  0.          0.00361446  0.00562249
+ -0.00120482 -0.00240964  0.00160643  0.00441767 -0.0060241   0.00240964
+  0.00883534  0.01124498] Perfs None 
+  
+    # with random_score = np.array(list(single_mems.values()) + [baseline_value] +   list(loo_mems.values())    ).mean()
+    Done Shapely Values [ 0.00310332  0.00681058 -0.00100249 -0.00202477 -0.00352166  0.00372399
+    #   0.00213734  0.00346842  0.00328587 -0.00100249 -0.01584216 -0.01232049
+    #   0.00854326  0.01038852], Loo vals [ 0.00040161 -0.00240964 -0.00040161  0.          0.00361446  0.00562249
+    #  -0.00120482 -0.00240964  0.00160643  0.00441767 -0.0060241   0.00240964
+    #   0.00883534  0.01124498] Perfs None 
+    
+    # with baseline:
+    Done Shapely Values [ 0.00310332  0.00405257 -0.0037605  -0.00478277 -0.00627966  0.00372399
+ -0.00062066  0.00346842  0.00328587 -0.0037605  -0.02135816 -0.0150785
+  0.00854326  0.00763052], Loo vals [ 0.00040161 -0.00240964 -0.00040161  0.          0.00361446  0.00562249
+ -0.00120482 -0.00240964  0.00160643  0.00441767 -0.0060241   0.00240964
+  0.00883534  0.01124498] Perfs None 
+
+    '''
+
+
+
+
+        # pdb.set_trace()
     mem_tmc = np.zeros((0,
                         n_points))  # (n_iter x n_points) #n_iter is basically n_(save_every) which can be a high value and it's not epoch
     idxs_tmc = np.zeros((0, n_sources), int)
@@ -1115,8 +1217,6 @@ for eval_task_name in eval_task_names:
         idxs_g = None
 
 
-    data_combination = sorted(list(sources.keys()))
-    data_combination_name = '_'.join([ALL_BINARY_TASKS[id] for id in data_combination])
     small_performance_dict[eval_task_name][data_combination_name] = baseline_value
 
     tmc_number, g_number = _which_parallel(directory)
@@ -1148,24 +1248,24 @@ for eval_task_name in eval_task_names:
                                                eval_run_command + ' --data_size ' + str(eval_data_size), n_points_file)
             else:
                 vals_loo = _calculate_loo_vals(sources, baseline_value, n_points, \
-                                           eval_output_dir,
-                                           train_run_command + ' --num_train_epochs ' + str(num_train_epochs), \
-                                           eval_run_command + ' --data_size ' + str(eval_data_size), n_points_file)
+                                               eval_output_dir,
+                                               train_run_command + ' --num_train_epochs ' + str(num_train_epochs), \
+                                               eval_run_command + ' --data_size ' + str(eval_data_size), n_points_file)
             print('LOO values are being saved!', flush=True)
             save_results(directory, vals_loo, tmc_number, mem_tmc, idxs_tmc, g_number, mem_g, idxs_g, sources,
                          overwrite=True,
                          n_points=n_points, tol=tol, \
                          baseline_value=baseline_value, random_score=random_score, mean_score=mean_score)
-        print('LOO values calculated!', flush=True)
+        print('LOO values calculated and saved!', flush=True)
 
-    if not tolerance: tolerance = tol
+    if not tolerance:
+        pdb.set_trace()
 
 
     def run_routine(tmc_run, train_run_command, eval_run_command, eval_data_size, num_train_epochs, eval_output_dir,
                     n_points_file, mem_tmc, idxs_tmc, random_score, mean_score, n_points, save_every, seed, max_iter,
                     tolerance, sources):
-        QQP_time_routine = 0
-        QNLI_time_routine = 0
+
         for iter_counter in trange(max_iter, desc='Overall Shpley Value Calculation'):
             if g_run:
                 pdb.set_trace()
@@ -1185,20 +1285,21 @@ for eval_task_name in eval_task_names:
                     print('=' * 120, flush=True)
                     old_shape = mem_tmc.shape[0]
                     if 'full_training' in train_output_dir:
-                        mem_tmc, idxs_tmc, QQP_time_temp, QNLI_time_temp = _tmc_shap(train_run_command_full + ' --num_train_epochs ' + str(num_train_epochs), \
-                                                      eval_run_command, eval_output_dir, \
-                                                      n_points_file, mem_tmc, idxs_tmc, random_score, mean_score, \
-                                                      n_points, save_every, seed, iter_counter, max_iter, tolerance,
-                                                      sources,
-                                                      print_step=1)
+                        mem_tmc, idxs_tmc = _tmc_shap(
+                            train_run_command_full + ' --num_train_epochs ' + str(num_train_epochs), \
+                            eval_run_command, eval_output_dir, \
+                            n_points_file, mem_tmc, idxs_tmc, random_score, mean_score, \
+                            n_points, save_every, seed, iter_counter, max_iter, tolerance,
+                            sources,
+                            print_step=1)
                     else:
-                        mem_tmc, idxs_tmc, QQP_time_temp, QNLI_time_temp  = _tmc_shap(train_run_command + ' --num_train_epochs ' + str(num_train_epochs), \
-                                                  eval_run_command, eval_output_dir, \
-                                                  n_points_file, mem_tmc, idxs_tmc, random_score, mean_score, \
-                                                  n_points, save_every, seed, iter_counter, max_iter, tolerance, sources,
-                                                  print_step=1)
-                        QNLI_time_routine+=QNLI_time_temp
-                        QQP_time_routine+=QQP_time_temp
+                        mem_tmc, idxs_tmc  = _tmc_shap(
+                            train_run_command + ' --num_train_epochs ' + str(num_train_epochs), \
+                            eval_run_command, eval_output_dir, \
+                            n_points_file, mem_tmc, idxs_tmc, random_score, mean_score, \
+                            n_points, save_every, seed, iter_counter, max_iter, tolerance, sources,
+                            print_step=1)
+
 
                     # sets vals_tmc (train_size,) 1d array
 
@@ -1215,38 +1316,49 @@ for eval_task_name in eval_task_names:
                 if g_run: pdb.set_trace()
 
         print(f'error now{error(mem_tmc)}< err{err}: {err}')
-        return mem_tmc, idxs_tmc, vals_tmc, QQP_time_routine, QNLI_time_routine
+        return mem_tmc, idxs_tmc, vals_tmc
 
 
-    if not load_shapley: mem_tmc, idxs_tmc, vals_tmc, QQP_time_routine, QNLI_time_routine  = run_routine(tmc_run, train_run_command, eval_run_command,
-                                                                   eval_data_size, num_train_epochs, eval_output_dir,
-                                                                   n_points_file, mem_tmc, idxs_tmc, random_score,
-                                                                   mean_score, n_points, save_every, seed, max_iter,
-                                                                   tolerance, sources)
-    QNLI_time += QQP_time_routine
-    QNLI_time += QNLI_time_routine
+    if not load_shapley: mem_tmc, idxs_tmc, vals_tmc  = run_routine(tmc_run,
+                                                                    train_run_command,
+                                                                    eval_run_command,
+                                                                    eval_data_size,
+                                                                    num_train_epochs,
+                                                                    eval_output_dir,
+                                                                    n_points_file,
+                                                                    mem_tmc,
+                                                                    idxs_tmc,
+                                                                    random_score,
+                                                                    mean_score,
+                                                                    n_points,
+                                                                    save_every,
+                                                                    seed, max_iter,
+                                                                    tolerance,
+                                                                    sources)
+
     mem_tmc, idxs_tmc, vals_tmc, mem_g, idxs_g, vals_g = merge_results(directory, n_points, sources)
 
-    # vals_tmc = np.mean(np.concatenate([mem_tmc, vals_loo.reshape(1, -1)]), 0)
+    vals_tmc = np.mean(np.concatenate([mem_tmc, vals_loo.reshape(1, -1)]), 0)
+
 
     shapley_value_plots(directory, [vals_tmc, vals_loo], n_points, num_plot_markers=20, sources=sources,
                         name=name + '_' + str(n_points))
-
-    perfs = None
-    # perfs = performance_plots_adding(directory, [vals_tmc, vals_loo], train_task_name, eval_task_name, \
-    #                                  train_run_command_full, eval_run_command_full, random_score, n_points,
-    #                                  name=name + '_' + str(n_points), \
-    #                                  num_plot_markers=20, sources=sources, rnd_iters=1, length=None)
-
-    # pdb.set_trace()
-    print("=" * 50, f'\nDone Shapely Values {vals_tmc}, Loo vals {vals_loo} Perfs {perfs}', "\n", "=" * 50, flush=True)
-
 
     single_mems = {lang: small_performance_dict[eval_task_name][lang] for lang in ALL_BINARY_TASKS if
                    lang in small_performance_dict[eval_task_name]}
     dict = {k: v for k, v in small_performance_dict[eval_task_name].items()}
     best_single_comb = {k: v for k, v in single_mems.items() if v == max(single_mems.values())}
 
-    del baseline_value
-print("QQP_time: ", QQP_time, flush=True)
-print("QNLI _time: ", QNLI_time, flush=True)
+
+    perfs = None
+
+
+
+    print("=" * 50, f'\nDone Shapely Values {vals_tmc}, Loo vals {vals_loo} Perfs {perfs}', "\n", "=" * 50, flush=True)
+
+    pdb.set_trace()
+
+    try:
+        del baseline_value
+    except:
+        pdb.set_trace()

@@ -18,9 +18,8 @@ from tqdm import trange, tqdm
 # ______________________________________NLPDV____________________________________
 
 # Model params
-BASE_DATA_DIR = '/home/rizwan/.flair/datasets/'
+BASE_DATA_DIR = '/local/rizwan/UDTree/'
 run_file = './examples/run_multi_domain_pos.py'
-# run_file= './examples/data_valuation.py'
 model_type = 'bert'
 train_model_name_or_path = 'bert-base-multilingual-cased'  # 'bert-large-uncased-whole-word-masking'
 do_lower_case = False
@@ -38,7 +37,7 @@ overwrite_cache = False
 # eval_task_name = 'ud_english'
 
 # CUDA gpus
-CUDA_VISIBLE_DEVICES = [ 3, 4, 5, 1]
+CUDA_VISIBLE_DEVICES = [2]
 # _______________________________________________________________________
 # ______________________________________NLPDV____________________________________
 
@@ -49,7 +48,7 @@ cluster_size = 10
 cluster_num = train_data_size // cluster_size
 # Seed
 seed = 43
-max_iter = 100
+max_iter = 30
 save_every = 1
 # total _iter = max_iter x save_every
 tolerance = 0.2
@@ -69,7 +68,7 @@ g_run = False
 load_removing_performance_plot = load_adding_performance_plot = True
 
 overwrite_directory = False
-load_shapley = True # True when just load shapley's when to plot only
+load_shapley = False # True when just load shapley's when to plot only
 
 ALL_EVAL_TASKS = [
         'UD_ARABIC',
@@ -108,9 +107,10 @@ small_performance_dict = {eval_task_name: {} for eval_task_name in ALL_EVAL_TASK
 full_performance_dict = {eval_task_name: {} for eval_task_name in ALL_EVAL_TASKS}
 
 
-for eval_task_name in ALL_EVAL_TASKS:
+for eval_task_name in ALL_EVAL_TASKS[25:]:
 
     train_task_name = eval_task_name
+
     print('-' * 50, flush=True)
     print("Task name: ", eval_task_name, flush=True)
     print('-' * 50, flush=True)
@@ -326,8 +326,8 @@ for eval_task_name in ALL_EVAL_TASKS:
             vals_loo[sources[i]] = (baseline_value - removed_value)
             vals_loo[sources[i]] /= len(sources[i])
 
-        print("After Loo: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
-              full_performance_dict, flush=True)
+        # print("After Loo: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
+        #       full_performance_dict, flush=True)
 
         return vals_loo
 
@@ -1055,9 +1055,9 @@ for eval_task_name in ALL_EVAL_TASKS:
                 np.reshape(idxs, (1, -1))
             ])
 
-            print("After tmc step: small_performance_dict: ", small_performance_dict,
-                  'full_performance_dict:',
-                  full_performance_dict, flush=True)
+            # print("After tmc step: small_performance_dict: ", small_performance_dict,
+            #       'full_performance_dict:',
+            #       full_performance_dict, flush=True)
 
         return mem_tmc, idxs_tmc
 
@@ -1072,8 +1072,13 @@ for eval_task_name in ALL_EVAL_TASKS:
     if not os.path.exists(directory):
         os.makedirs(directory)
         os.makedirs(os.path.join(directory, 'plots'))
+    try:
+        # os.system('cp -r /home/rizwan/NLPDV/transformers/temp/'+eval_task_name+'_output_overlapping_ftmc/* '+directory)
+        os.system('rm temp/UD_*/mem_tmc_00*.pkl ')
+    except:
+        continue
 
-    # get baseline_value, random_score, n_points = (len train_dataset), sources etc.,
+        # get baseline_value, random_score, n_points = (len train_dataset), sources etc.,
 
     print(f'max_iter: {max_iter} save_every {save_every}, total {max_iter * save_every}', flush=True)
 
@@ -1099,11 +1104,22 @@ for eval_task_name in ALL_EVAL_TASKS:
         small_performance_dict = data['small_performance_dict']
         full_performance_dict = data['full_performance_dict']
 
-    print("Begining of run: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
-          full_performance_dict, flush=True)
+    # print("Begining of run: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
+    #       full_performance_dict, flush=True)
+
+    single_mems = {lang: small_performance_dict[eval_task_name][lang] for lang in ALL_BINARY_TASKS if
+                   lang in small_performance_dict[eval_task_name]}
+    print(single_mems)
+    best_single_comb = {k: v for k, v in single_mems.items() if v == max(single_mems.values())}
+    best_single = {k: v for k, v in single_mems.items() if v == max(single_mems.values())}
+    best_single_id = ALL_BINARY_TASKS.index(list(best_single.keys())[0])
+    print("Best single: ", best_single, " id: ", best_single_id)
+
 
     try:
         baseline_value
+        print("Baseline: ", baseline_value)
+
     except:
         if not n_points:
 
@@ -1113,11 +1129,11 @@ for eval_task_name in ALL_EVAL_TASKS:
             print('=' * 50, flush=True)
 
             # initial Training on whole dataset
-            command = train_run_command + ' --num_train_epochs ' + str(
-                num_train_epochs) + ' --is_baseline_run --seed ' + str(
-                seed) + ' '
+            command = train_run_command + ' --num_train_epochs ' + str(num_train_epochs) + ' --is_baseline_run --seed ' + str(seed) + ' '
             print(command, flush=True)
-            os.system(command)
+            if 'UD_DUTCH' not in eval_task_name:
+                os.system(command)
+
 
             # parse file and set n_points
             if not ALL_BINARY_TASKS:
@@ -1150,8 +1166,25 @@ for eval_task_name in ALL_EVAL_TASKS:
                     elif key == 'mean_score':
                         mean_score = float(value)
 
-    random_score = baseline_value/3
+    # lst = {task: max(small_performance_dict[task].values()) for task in ALL_EVAL_TASKS}
+    # random_score =  baseline_value/2 if lst[eval_task_name]-baseline_value<0.5 else 0.5
     mean_score = baseline_value
+
+    single_mems = {lang: small_performance_dict[eval_task_name][lang] for lang in ALL_BINARY_TASKS if
+                   lang in small_performance_dict[eval_task_name]}
+
+    loo_mems = {'_'.join([id for id in ALL_BINARY_TASKS if id != lang]): small_performance_dict[eval_task_name][
+        '_'.join([id for id in ALL_BINARY_TASKS if id != lang])] for lang in ALL_BINARY_TASKS}
+
+    if eval_task_name=='UD_GERMAN':
+        print('random score updated from: ', random_score, ' to: ')
+        random_score = np.array(list(single_mems.values()) + [baseline_value] ).mean()
+        print(random_score)
+    elif eval_task_name=='UD_ENGLISH':
+        print('random score updated from: ', random_score,' to: ')
+        random_score = baseline_value
+        print( random_score )
+
 
 
     if sources is None:
@@ -1162,9 +1195,12 @@ for eval_task_name in ALL_EVAL_TASKS:
 
     if not n_points: n_points = len(sources)
 
+
+
+
+
     # pdb.set_trace()
-    mem_tmc = np.zeros((0,
-                        n_points))  # (n_iter x n_points) #n_iter is basically n_(save_every) which can be a high value and it's not epoch
+    mem_tmc = np.zeros((0, n_points))  # (n_iter x n_points) #n_iter is basically n_(save_every) which can be a high value and it's not epoch
     idxs_tmc = np.zeros((0, n_sources), int)
     if g_run:
         mem_g = np.zeros((0, n_points))
@@ -1276,7 +1312,7 @@ for eval_task_name in ALL_EVAL_TASKS:
         print(f'error now{error(mem_tmc)}< err{err}: {err}')
         return mem_tmc, idxs_tmc, vals_tmc
 
-
+    # pdb.set_trace()
     if not load_shapley: mem_tmc, idxs_tmc, vals_tmc  = run_routine(tmc_run,
                                                                     train_run_command,
                                                                     eval_run_command,
@@ -1293,6 +1329,10 @@ for eval_task_name in ALL_EVAL_TASKS:
                                                                     seed, max_iter,
                                                                     tolerance,
                                                                     sources)
+    ''' 
+    #Just for pdb same line
+    mem_tmc, idxs_tmc, vals_tmc = run_routine(tmc_run,train_run_command,eval_run_command,eval_data_size,num_train_epochs,eval_output_dir,n_points_file,mem_tmc,idxs_tmc,random_score,mean_score,n_points,save_every,seed, max_iter,tolerance,sources)
+    '''
 
     mem_tmc, idxs_tmc, vals_tmc, mem_g, idxs_g, vals_g = merge_results(directory, n_points, sources)
 
@@ -1302,8 +1342,48 @@ for eval_task_name in ALL_EVAL_TASKS:
     shapley_value_plots(directory, [vals_tmc, vals_loo], n_points, num_plot_markers=20, sources=sources,
                         name=name + '_' + str(n_points))
 
+
     perfs = None
 
     print("=" * 50, f'\nDone Shapely Values {vals_tmc}, Loo vals {vals_loo} Perfs {perfs}', "\n", "=" * 50, flush=True)
 
-    del baseline_value
+    single_mems = {lang: small_performance_dict[eval_task_name][lang] for lang in ALL_BINARY_TASKS if
+                   lang in small_performance_dict[eval_task_name]}
+    dict_temp = {k: v for k, v in small_performance_dict[eval_task_name].items()}
+    best_single_comb = {k: v for k, v in single_mems.items() if v == max(single_mems.values())}
+    best_single = {k: v for k,v in single_mems.items() if v ==max(single_mems.values())}
+    best_single_id = ALL_BINARY_TASKS.index(list(best_single.keys())[0])
+    print("Best single: ", best_single, " id: ", best_single_id)
+
+    threshold = 0.1
+
+    pos_ids = [i for i in range(len(vals_tmc)) if vals_tmc[i]>=threshold]
+    confusion_ids = [i for i in range(len(vals_tmc)) if vals_tmc[i]<threshold and vals_tmc[i]>=0]
+    pos_ids = [i for i in range(len(vals_tmc)) if vals_tmc[i] >= threshold]
+
+    remove_shapley_ids = [i for i in range(len(vals_tmc)) if vals_tmc[i]<threshold]
+    remove_loo_ids = [i for i in range(len(vals_tmc)) if vals_loo[i] < threshold]
+
+    pos_loo_ids  = [i for i in range(len(vals_loo)) if vals_tmc[i]>0]
+
+    print('positive Shapley source ids: ', pos_ids, " names: ", ' '.join([ALL_BINARY_TASKS[id] for id in pos_ids]) )
+    print('Gray Shapley source ids: ', confusion_ids, " names: ", ' '.join([ALL_BINARY_TASKS[id] for id in confusion_ids]) )
+    print('Pos LOO source ids: ', pos_loo_ids, " names: ", ' '.join([ALL_BINARY_TASKS[id] for id in pos_loo_ids]) )
+    print('Remove Sahpley source ids: ', remove_shapley_ids, " names: ", ' '.join([ALL_BINARY_TASKS[id] for id in remove_shapley_ids]) )
+    print('Remove LOO source ids: ', remove_loo_ids, " names: ", ' '.join([ALL_BINARY_TASKS[id] for id in remove_loo_ids]) )
+
+
+    # with open('code_snippet2.txt', 'a') as code_f:
+    #     code_f.write("if is_Shapley == True and eval_task_name == '"+eval_task_name+"':\n \t \
+    #     write_indices_to_delete(indices_to_delete_file_path,"+ str(remove_shapley_ids) +')\n')
+    #
+    #     code_f.write("if is_Shapley == 'LOO' and eval_task_name == '" + eval_task_name + "':\n \t \
+    #             write_indices_to_delete(indices_to_delete_file_path," + str(remove_loo_ids) + ')\n')
+    #
+    #     if list(best_single.values())[0]>baseline_value:
+    #         print(" Baseline is lower than best_single: ", eval_task_name)
+    #         code_f.write("if is_Shapley == 'BEST_SINGLE' and eval_task_name == '" + eval_task_name + "':\n \t \
+    #             write_indices_to_delete(indices_to_delete_file_path," + str([ i for i in range(len(ALL_BINARY_TASKS)) if i!=best_single_id]) + ")\n")
+
+    pdb.set_trace()
+    del baseline_value, perfs, data, sources
