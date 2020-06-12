@@ -219,8 +219,11 @@ def train(args, train_dataset, model, tokenizer):
         epochs_trained, int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0],
     )
     set_seed(args)  # Added here for reproductibility
+    best_eval_acc = 0
     for _ in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
+        args.logging_steps = len(train_dataloader)
+        args.save_steps = len(train_dataloader)
         for step, batch in enumerate(epoch_iterator):
 
             # Skip past any already trained steps if resuming training
@@ -261,15 +264,16 @@ def train(args, train_dataset, model, tokenizer):
                 model.zero_grad()
                 global_step += 1
 
-                if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
+                if args.local_rank  == -1 and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     logs = {}
                     if (
-                        args.local_rank == -1 and args.evaluate_during_training
+                        args.local_rank in [-1, 0] and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
                         results = evaluate(args, model, tokenizer)
                         for key, value in results.items():
                             eval_key = "eval_{}".format(key)
                             logs[eval_key] = value
+
 
                     loss_scalar = (tr_loss - logging_loss) / args.logging_steps
                     learning_rate_scalar = scheduler.get_lr()[0]
@@ -277,23 +281,47 @@ def train(args, train_dataset, model, tokenizer):
                     logs["loss"] = loss_scalar
                     logging_loss = tr_loss
 
+
+
+
+
                     for key, value in logs.items():
                         tb_writer.add_scalar(key, value, global_step)
                     print(json.dumps({**logs, **{"step": global_step}}), flush=True)
 
                 if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0:
                     # Save model checkpoint
-                    output_dir = os.path.join(args.output_dir, "checkpoint-{}".format(global_step))
+                    output_dir = os.path.join(args.output_dir, "best")
                     if not os.path.exists(output_dir):
                         os.makedirs(output_dir)
-                    model_to_save = (
-                        model.module if hasattr(model, "module") else model
-                    )  # Take care of distributed/parallel training
-                    model_to_save.save_pretrained(output_dir)
-                    tokenizer.save_pretrained(output_dir)
+                    if not os.path.exists(args.output_dir):
+                        os.makedirs(args.output_dir)
+                    if logs["eval_acc"] > best_eval_acc:
 
-                    torch.save(args, os.path.join(output_dir, "training_args.bin"))
-                    logger.info("Saving model checkpoint to %s", output_dir)
+                        print(json.dumps({**logs, **{"step": global_step,"msg": "New dev found continuing",\
+                                                     "epoch": global_step/args.save_steps, \
+                                                     'logs["eval_acc"] > best_eval_acc': str(logs["eval_acc"] > best_eval_acc),
+                                                     'logs["eval_acc"]': logs["eval_acc"],
+                                                     'best_eval_acc': best_eval_acc
+                                                     }}), flush=True)
+                        best_eval_acc = logs["eval_acc"]
+                        model_to_save = (
+                            model.module if hasattr(model, "module") else model
+                        )  # Take care of distributed/parallel training
+                        model_to_save.save_pretrained(output_dir)
+                        tokenizer.save_pretrained(output_dir)
+
+                        torch.save(args, os.path.join(output_dir, "training_args.bin"))
+                        logger.info("Saving model checkpoint to %s", output_dir)
+                    else:
+                        print(json.dumps({**logs, **{"step": global_step, "msg": "SHOULD EARLY STOP but continuing!!",\
+                                                     "epoch": global_step/args.save_steps,\
+                                                     'logs["eval_acc"] > best_eval_acc': str(logs["eval_acc"] > best_eval_acc),
+                                                     'logs["eval_acc"]' : logs["eval_acc"], 'best_eval_acc': best_eval_acc}}),
+                              flush=True)
+
+                        args.max_steps = len(train_dataloader) // args.gradient_accumulation_steps * 2
+
 
                     torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
@@ -312,11 +340,8 @@ def train(args, train_dataset, model, tokenizer):
     return global_step, tr_loss / global_step
 
 
-def evaluate(args, model, tokenizer, prefix="", is_binary=True):
+def evaluate(args, model, tokenizer, prefix="", is_predict=False):
     # Loop to handle MNLI double evaluation (matched, mis-matched)
-    eval_task_names = ("mnli", "mnli-mm") if args.task_name == "mnli"  else (args.task_name,)
-    eval_outputs_dirs = (args.output_dir, args.output_dir + "-MM") if args.task_name == "mnli"  else (args.output_dir,)
-
     eval_task_names = (args.task_name,)
     eval_outputs_dirs = (args.output_dir,)
 
@@ -391,7 +416,8 @@ def evaluate(args, model, tokenizer, prefix="", is_binary=True):
             for key in sorted(result.keys()):
                 logger.info("  %s = %s", key, str(result[key]))
                 if result[key]: writer.write("%s = %s\n" % (key, str(result[key])))
-
+    if is_predict:
+        return results, (preds, out_label_ids)
     return results
 
 
@@ -405,7 +431,7 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
     output_mode = output_modes[task]
     # Load data features from cache or dataset file
     if evaluate:
-        if not args.data_size:
+        if not args.data_size or args.do_predict:
             tag = "test"
         else:
             tag = "dev"
@@ -567,6 +593,7 @@ def main():
     )
     parser.add_argument("--do_train", action="store_true", help="Whether to run training.")
     parser.add_argument("--do_eval", action="store_true", help="Whether to run eval on the dev set.")
+    parser.add_argument("--do_predict", action="store_true", help="Whether to run eval on the test set.")
     parser.add_argument(
         "--evaluate_during_training", action="store_true", help="Run evaluation during training at each logging step.",
     )
@@ -601,7 +628,7 @@ def main():
     )
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
 
-    parser.add_argument("--logging_steps", type=int, default=50000, help="Log every X updates steps.")
+    parser.add_argument("--logging_steps", type=int, default=500000, help="Log every X updates steps.")
     parser.add_argument("--save_steps", type=int, default=50000, help="Save checkpoint every X updates steps.")
     parser.add_argument(
         "--eval_all_checkpoints",
@@ -651,6 +678,12 @@ def main():
         "--LOO", action="store_true",
         help="Whether to calculate LOO or not?",
     )
+
+    parser.add_argument(
+        "--is_few_shot", action="store_true",
+        help="Whether to calculate LOO or not?",
+    )
+
     parser.add_argument(
         "--num_bags", default=20, type=int,
         help="How many bags to approximate the mean performance ",
@@ -712,7 +745,7 @@ def main():
     set_seed(args)
 
     # Prepare GLUE task
-    args.task_name = args.task_name.lower()
+    # args.task_name = args.task_name.lower()
     args.glue_dir = args.data_dir
     if args.task_name not in processors:
         raise ValueError("Task not found: %s" % (args.task_name))
@@ -759,6 +792,7 @@ def main():
     # Training
     if args.do_train:
         ALL_BINARY_TASKS = list(processors.keys())
+        print('ALL_BINARY_TASKS: ', ALL_BINARY_TASKS, flush=True)
         ALL_BINARY_TASKS.remove(args.task_name)
         logger.info(" ALL_BINARY_TASKS = %s, task = %s args.indices_to_delete_file_path = %s", ALL_BINARY_TASKS, args.task_name, args.indices_to_delete_file_path)
         logger.info(" not evaluate = %s args.indices_to_delete_file_path and not evaluate=%s", not evaluate, args.indices_to_delete_file_path and not evaluate)
@@ -845,6 +879,31 @@ def main():
             result = evaluate(args, model, tokenizer, prefix=prefix)
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
             results.update(result)
+
+    if args.do_predict and args.local_rank in [-1, 0]:
+        tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
+        model = model_class.from_pretrained(args.output_dir)
+        model.to(args.device)
+        results, (predictions, gold_labels) = evaluate(args, model, tokenizer, is_predict=True)
+        # Save results
+        output_test_results_file = os.path.join(args.output_dir, "eval_results.txt")
+        with open(output_test_results_file, "w") as writer:
+            for key in sorted(results.keys()):
+                if results[key]: writer.write("{} = {}\n".format(key, str(results[key])))
+        # Save predictions
+
+        output_test_predictions_file = os.path.join(args.output_dir, "test_predictions.txt")
+        output_test_gold_file = os.path.join(args.output_dir, "test_gold.txt")
+        pred_count = 0
+        with open(output_test_predictions_file, "w") as writer:
+            with open(output_test_gold_file, "w") as f:
+                for gold, pred in zip(gold_labels, predictions):
+                    f.write(gold+"\n")
+                    writer.write(pred+"\n")
+                    pred_count += 1
+        logger.info("Written %s sentences to both gold and %s to  pred file. Total %d word", len(gold_labels), len(predictions), pred_count)
+
+
 
     return results
 

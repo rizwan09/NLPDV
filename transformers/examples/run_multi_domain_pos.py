@@ -21,7 +21,7 @@ import glob
 import logging
 import os
 import random
-import pdb
+import pdb, json
 
 import numpy as np
 import torch
@@ -176,8 +176,11 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
         epochs_trained, int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0]
     )
     set_seed(args)  # Added here for reproductibility
+    best_eval_acc = 0
     for _ in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
+        args.logging_steps = len(train_dataloader)
+        args.save_steps = len(train_dataloader)
         for step, batch in enumerate(epoch_iterator):
 
             # Skip past any already trained steps if resuming training
@@ -221,33 +224,66 @@ def train(args, train_dataset, model, tokenizer, labels, pad_token_label_id):
 
                 if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     # Log metrics
+                    logs = {}
                     if (
-                        args.local_rank == -1 and args.evaluate_during_training
+                        args.local_rank in [-1,0] and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
                         results, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev")
                         for key, value in results.items():
                             tb_writer.add_scalar("eval_{}".format(key), value, global_step)
+                        for key, value in results.items():
+                            eval_key = "eval_{}".format(key)
+                            logs[eval_key] = value
                     tb_writer.add_scalar("lr", scheduler.get_lr()[0], global_step)
                     tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
                     logging_loss = tr_loss
 
                 if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0:
                     # Save model checkpoint
-                    output_dir = os.path.join(args.output_dir, "checkpoint-{}".format(global_step))
+                    output_dir = os.path.join(args.output_dir, "best")
                     if not os.path.exists(output_dir):
                         os.makedirs(output_dir)
-                    model_to_save = (
-                        model.module if hasattr(model, "module") else model
-                    )  # Take care of distributed/parallel training
-                    model_to_save.save_pretrained(output_dir)
-                    tokenizer.save_pretrained(output_dir)
+                    if not os.path.exists(args.output_dir):
+                        os.makedirs(args.output_dir)
+                    if logs["eval_acc"] > best_eval_acc:
 
-                    torch.save(args, os.path.join(output_dir, "training_args.bin"))
-                    logger.info("Saving model checkpoint to %s", output_dir)
+                        print(json.dumps({**logs, **{"step": global_step, "msg": "New dev found continuing", \
+                                                     "epoch": global_step / args.save_steps, \
+                                                     'logs["eval_acc"] > best_eval_acc': str(
+                                                         logs["eval_acc"] > best_eval_acc),
+                                                     'logs["eval_acc"]': logs["eval_acc"],
+                                                     'best_eval_acc': best_eval_acc
+                                                     }}), flush=True)
+                        best_eval_acc = logs["eval_acc"]
+                        model_to_save = (
+                            model.module if hasattr(model, "module") else model
+                        )  # Take care of distributed/parallel training
+                        model_to_save.save_pretrained(output_dir)
+                        tokenizer.save_pretrained(output_dir)
+
+                        torch.save(args, os.path.join(output_dir, "training_args.bin"))
+                        logger.info("Saving model checkpoint to %s", output_dir)
+
+                    else:
+                        print(json.dumps({**logs, **{"step": global_step, "msg": " EARLY STOP !!",\
+                                                     "epoch": global_step / args.save_steps, \
+                                                     'logs["eval_acc"] > best_eval_acc': str(
+                                                         logs["eval_acc"] > best_eval_acc),
+                                                     'logs["eval_acc"]': logs["eval_acc"],
+                                                     'best_eval_acc': best_eval_acc}}),
+                              flush=True)
+
+
 
                     torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
                     logger.info("Saving optimizer and scheduler states to %s", output_dir)
+
+
+
+
+
+
 
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
@@ -283,9 +319,10 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     preds = None
     out_label_ids = None
     model.eval()
+    sent_count = 0
     for batch in tqdm(eval_dataloader, desc="Evaluating"):
+        sent_count += len(batch[0])
         batch = tuple(t.to(args.device) for t in batch)
-
         with torch.no_grad():
             inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
             if args.model_type != "distilbert":
@@ -336,7 +373,9 @@ def evaluate(args, model, tokenizer, labels, pad_token_label_id, mode, prefix=""
     if args.is_baseline_run:
         results.update({'mean_score': acc})
 
-    return results, preds_list
+    logger.info("  # pred sentnces = %d and # gold sentneces %d nb_eval_steps = %d", len(preds_list), len(out_label_list),
+                nb_eval_steps, )
+    return results, (preds_list, out_label_list)
 
 
 def load_and_cache_examples(args, task, tokenizer, labels, pad_token_label_id, mode):
@@ -660,7 +699,6 @@ def main():
     )
 
 
-
     args = parser.parse_args()
 
     if (
@@ -891,37 +929,25 @@ def main():
         tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
         model = model_class.from_pretrained(args.output_dir)
         model.to(args.device)
-        result, predictions = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test")
+        results, (predictions, gold_labels) = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="test")
         # Save results
         output_test_results_file = os.path.join(args.output_dir, "eval_results.txt")
         with open(output_test_results_file, "w") as writer:
-            for key in sorted(result.keys()):
-                if results[key]: writer.write("{} = {}\n".format(key, str(result[key])))
+            for key in sorted(results.keys()):
+                if results[key]: writer.write("{} = {}\n".format(key, str(results[key])))
         # Save predictions
-        output_test_predictions_file = os.path.join(args.output_dir, "test_predictions.txt")
-        with open(output_test_predictions_file, "w") as writer:
-            with open(os.path.join(args.data_dir, "test.txt"), "r") as f:
-                example_id = 0
-                for line in f:
-                    if line.startswith("-DOCSTART-") or line == "" or line == "\n":
-                        writer.write(line)
-                        try:
-                            if not predictions[example_id]:
-                                example_id += 1
-                        except:
-                            pass
-                    else:
-                        try:
-                            if predictions[example_id]:
-                                output_line = line.split()[0] + " " + predictions[example_id].pop(0) + "\n"
-                                writer.write(output_line)
-                            else:
-                                # logger.warning("Maximum sequence length exceeded: No prediction for '%s'.", line.split()[0])
-                                pass
-                        except:
-                            # logger.warning("Maximum sequence length exceeded: No prediction for '%s'.", line.split()[0])
-                            pass
 
+        output_test_predictions_file = os.path.join(args.output_dir, "test_predictions.txt")
+        output_test_gold_file = os.path.join(args.output_dir, "test_gold.txt")
+        pred_count = 0
+        with open(output_test_predictions_file, "w") as writer:
+            with open(output_test_gold_file, "w") as f:
+                for gold_line, pred_line in zip(gold_labels, predictions):
+                    for gold, pred in zip(gold_line, pred_line):
+                        f.write(gold+"\n")
+                        writer.write(pred+"\n")
+                        pred_count += 1
+        logger.info("Written %s sentences to both gold and %s to  pred file. Total %d word", len(gold_labels), len(predictions), pred_count)
 
     return results
 

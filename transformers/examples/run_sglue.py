@@ -217,8 +217,11 @@ def train(args, train_dataset, model, tokenizer):
         epochs_trained, int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0],
     )
     set_seed(args)  # Added here for reproductibility
+    best_eval_acc = 0
     for _ in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
+        args.logging_steps = len(train_dataloader)
+        args.save_steps = len(train_dataloader)
         for step, batch in enumerate(epoch_iterator):
 
             # Skip past any already trained steps if resuming training
@@ -262,9 +265,11 @@ def train(args, train_dataset, model, tokenizer):
                 if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     logs = {}
                     if (
-                        args.local_rank == -1 and args.evaluate_during_training
+                        args.local_rank in [-1,0] and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
+                        args.data_size = 1200 if args.task_name=="QNLI" else 2000
                         results = evaluate(args, model, tokenizer)
+                        args.data_size = None
                         for key, value in results.items():
                             eval_key = "eval_{}".format(key)
                             logs[eval_key] = value
@@ -281,17 +286,38 @@ def train(args, train_dataset, model, tokenizer):
 
                 if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0:
                     # Save model checkpoint
-                    output_dir = os.path.join(args.output_dir, "checkpoint-{}".format(global_step))
+                    output_dir = os.path.join(args.output_dir, "best")
                     if not os.path.exists(output_dir):
                         os.makedirs(output_dir)
-                    model_to_save = (
-                        model.module if hasattr(model, "module") else model
-                    )  # Take care of distributed/parallel training
-                    model_to_save.save_pretrained(output_dir)
-                    tokenizer.save_pretrained(output_dir)
+                    if not os.path.exists(args.output_dir):
+                        os.makedirs(args.output_dir)
+                    if logs["eval_acc"] > best_eval_acc:
 
-                    torch.save(args, os.path.join(output_dir, "training_args.bin"))
-                    logger.info("Saving model checkpoint to %s", output_dir)
+                        print(json.dumps({**logs, **{"step": global_step, "msg": "New dev found continuing", \
+                                                     "epoch": global_step / args.save_steps, \
+                                                     'logs["eval_acc"] > best_eval_acc': str(
+                                                         logs["eval_acc"] > best_eval_acc),
+                                                     'logs["eval_acc"]': logs["eval_acc"],
+                                                     'best_eval_acc': best_eval_acc
+                                                     }}), flush=True)
+                        best_eval_acc = logs["eval_acc"]
+                        model_to_save = (
+                            model.module if hasattr(model, "module") else model
+                        )  # Take care of distributed/parallel training
+                        model_to_save.save_pretrained(output_dir)
+                        tokenizer.save_pretrained(output_dir)
+
+                        torch.save(args, os.path.join(output_dir, "training_args.bin"))
+                        logger.info("Saving model checkpoint to %s", output_dir)
+
+                    else:
+                        print(json.dumps({**logs, **{"step": global_step, "msg": " EARLY STOP !!", \
+                                                     "epoch": global_step / args.save_steps, \
+                                                     'logs["eval_acc"] > best_eval_acc': str(
+                                                         logs["eval_acc"] > best_eval_acc),
+                                                     'logs["eval_acc"]': logs["eval_acc"],
+                                                     'best_eval_acc': best_eval_acc}}),
+                              flush=True)
 
                     torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
@@ -400,11 +426,18 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
 
     processor = processors[task]()
     output_mode = output_modes[task]
+
+
+    if args.test:
+        mode = "test"
+    else:
+        mode = "dev"
+
     # Load data features from cache or dataset file
     cached_features_file = os.path.join(
         args.data_dir,
         "cached_{}_{}_{}_{}".format(
-            "dev" if evaluate else "train",
+            mode if evaluate else "train",
             list(filter(None, args.model_name_or_path.split("/"))).pop(),
             str(args.max_seq_length),
             str(task)
@@ -424,9 +457,21 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
             # HACK(label indices are swapped in RoBERTa pretrained model)
             label_list[1], label_list[2] = label_list[2], label_list[1]
 
-        examples = (
-            processor.get_dev_examples(args.data_dir) if evaluate else processor.get_train_examples(args.data_dir)
-        )
+        # examples = (
+        #     processor.get_dev_examples(args.data_dir) if evaluate else processor.get_train_examples(args.data_dir)
+        # )
+
+        if evaluate:
+            if args.test:
+                examples = (processor.get_test_examples(args.data_dir))
+            else:
+                examples = (processor.get_dev_examples(args.data_dir))
+        else:
+            examples = ( processor.get_train_examples(args.data_dir) )
+
+
+
+
         features = convert_examples_to_features(
             examples,
             tokenizer,
@@ -449,7 +494,30 @@ def load_and_cache_examples(args, task, tokenizer, evaluate=False, num_labels=2)
         print(f'originial data size: {len(features)} truncated to {args.data_size}', flush=True)
         # start = int(len(features)/2)-args.data_size
         # features = features[start : start+args.data_size ]
-        features = np.random.choice(features, args.data_size, replace=False)
+
+        cached_features_file = os.path.join(
+            args.data_dir,
+            "cached_{}_{}_{}_{}_small".format(
+                "dev" if evaluate else "train",
+                list(filter(None, args.model_name_or_path.split("/"))).pop(),
+                str(args.max_seq_length),
+                str(task)
+            ),
+        )
+        if os.path.exists(cached_features_file) and not args.overwrite_cache:
+            logger.info(
+                "#############################################################################################################")
+            logger.info("Loading features from cached small dev file %s", cached_features_file)
+            logger.info(
+                "#############################################################################################################")
+            features = torch.load(cached_features_file)
+        else:
+            features = np.random.choice(features, args.data_size, replace=False)
+            if args.local_rank in [-1, 0]:
+                logger.info("Saving features into cached small dev file %s", cached_features_file)
+                torch.save(features, cached_features_file)
+
+
 
     # Convert to Tensors and build dataset
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
@@ -636,8 +704,10 @@ def main():
         help="How many bags to approximate the mean performance ",
     )
 
-
-
+    parser.add_argument(
+        "--test", action="store_true",
+        help="Whether to evaluate on dev set or test set",
+    )
 
     args = parser.parse_args()
 

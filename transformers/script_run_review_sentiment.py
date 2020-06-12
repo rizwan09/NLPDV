@@ -38,7 +38,7 @@ train_task_name = 'baby'
 eval_task_name = train_task_name
 
 # CUDA gpus
-CUDA_VISIBLE_DEVICES = [0]
+CUDA_VISIBLE_DEVICES = [3,4]
 # _______________________________________________________________________
 # ______________________________________NLPDV____________________________________
 
@@ -1068,7 +1068,7 @@ single_mems = {lang: small_performance_dict[lang] for lang in ALL_BINARY_TASKS i
 loo_mems = {'_'.join([id for id in ALL_BINARY_TASKS if id != lang]): small_performance_dict[
     '_'.join([id for id in ALL_BINARY_TASKS if id != lang])] for lang in ALL_BINARY_TASKS}
 
-random_score = baseline_value #np.array(list(single_mems.values()) + [baseline_value] ).mean()
+random_score = baseline_value/2 #np.array(list(single_mems.values()) + [baseline_value] ).mean()
 
 
 

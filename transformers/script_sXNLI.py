@@ -37,7 +37,7 @@ overwrite_cache = False
 
 
 # CUDA gpus
-CUDA_VISIBLE_DEVICES = [0,1,2,3]
+CUDA_VISIBLE_DEVICES = [0,1,2,3,4,5,6,7]
 # _______________________________________________________________________
 # ______________________________________NLPDV____________________________________
 
@@ -47,8 +47,8 @@ eval_data_size = 100000000
 cluster_size = 10
 cluster_num = train_data_size // cluster_size
 # Seed
-seed = 43
-max_iter = 10
+seed = 143
+max_iter = 30
 save_every = 1
 # total _iter = max_iter x save_every
 tolerance = 0.2
@@ -108,7 +108,7 @@ print('small_performance_dict: ', small_performance_dict, flush=True)
 
 full_performance_dict = {eval_task_name: {} for eval_task_name in ALL_EVAL_TASKS}
 
-for eval_task_name in ALL_EVAL_TASKS[1:]:
+for eval_task_name in ALL_EVAL_TASKS:
 
     train_task_name = eval_task_name
     print('-' * 50, flush=True)
@@ -1130,24 +1130,22 @@ for eval_task_name in ALL_EVAL_TASKS[1:]:
                     elif key == 'mean_score':
                         mean_score = float(value)
 
-
-
     if not n_points: n_points = len(sources)
     try:
         random_score
     except:
-
-        random_score = baseline_value #0.5
+        random_score = baseline_value
         mean_score = baseline_value
-    if eval_task_name=='es':random_score = baseline_value
+    # if eval_task_name=='es':random_score = baseline_value
 
     single_mems = {lang: small_performance_dict[eval_task_name][lang] for lang in ALL_BINARY_TASKS if
                    lang in small_performance_dict[eval_task_name]}
 
-    loo_mems = { '_'.join([id for id in ALL_BINARY_TASKS if id!= lang]): small_performance_dict[eval_task_name]['_'.join([id for id in ALL_BINARY_TASKS if id!= lang])]  for lang in ALL_BINARY_TASKS }
+    # loo_mems = { '_'.join([id for id in ALL_BINARY_TASKS if id!= lang]): small_performance_dict[eval_task_name]['_'.join([id for id in ALL_BINARY_TASKS if id!= lang])]  for lang in ALL_BINARY_TASKS }
 
-    random_score =   np.array(list(single_mems.values()) + [baseline_value]    ).mean()
-
+    # if eval_task_name=='th': baseline_value = 0.601
+    random_score = np.array(list(single_mems.values()) + [baseline_value]    ).mean()
+    # pdb.set_trace()
 
     ''' for de 
     
@@ -1346,7 +1344,7 @@ for eval_task_name in ALL_EVAL_TASKS[1:]:
 
     single_mems = {lang: small_performance_dict[eval_task_name][lang] for lang in ALL_BINARY_TASKS if
                    lang in small_performance_dict[eval_task_name]}
-    dict = {k: v for k, v in small_performance_dict[eval_task_name].items()}
+    # dict = {k: v for k, v in small_performance_dict[eval_task_name].items()}
     best_single_comb = {k: v for k, v in single_mems.items() if v == max(single_mems.values())}
 
 
@@ -1356,7 +1354,7 @@ for eval_task_name in ALL_EVAL_TASKS[1:]:
 
     print("=" * 50, f'\nDone Shapely Values {vals_tmc}, Loo vals {vals_loo} Perfs {perfs}', "\n", "=" * 50, flush=True)
 
-    pdb.set_trace()
+    # pdb.set_trace()
 
     try:
         del baseline_value

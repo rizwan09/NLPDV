@@ -16,16 +16,16 @@ from tqdm import trange, tqdm
 # ______________________________________NLPDV____________________________________
 
 #gpu 0,2 on NLP9 are culprit gpu 3,4 on nlp8
-CUDA_VISIBLE_DEVICES = [1,3,4,5,6,7]
+CUDA_VISIBLE_DEVICES = [0,1,2,3,4,5,6,7]
 
-BASE_DATA_DIR = '/local/rizwan/UDTree/'
-run_file = './examples/run_multi_domain_pos.py'
+BASE_DATA_DIR = '/home/rizwan/NLPDV/glue/'
+run_file = './examples/run_sglue.py'
 model_type = 'bert'
-train_model_name_or_path = 'bert-base-multilingual-cased'  # 'bert-large-uncased-whole-word-masking'
+train_model_name_or_path = 'bert-base-cased' # 'bert-large-uncased-whole-word-masking'
 do_lower_case = False
 num_train_epochs = 4.0
 num_eval_epochs = 1.0
-per_gpu_eval_batch_size = 32
+per_gpu_eval_batch_size = 100
 per_gpu_train_batch_size = 32
 learning_rate = 5e-5
 max_seq_length = 128
@@ -40,78 +40,19 @@ Runs:
 '''
 
 
-ALL_EVAL_TASKS = [
-        'UD_ARABIC',
-        'UD_BASQUE',
-        'UD_BULGARIAN',
-        'UD_CATALAN',
-        'UD_CHINESE',
-        'UD_CROATIAN',
-        'UD_CZECH',
-        'UD_DANISH',
-        'UD_DUTCH',
-        'UD_ENGLISH',
-        'UD_FINNISH',
-        'UD_FRENCH',
-        'UD_GERMAN',
-        'UD_HEBREW',
-        'UD_HINDI',
-        'UD_INDONESIAN',
-        'UD_ITALIAN',
-        'UD_JAPANESE',
-        'UD_KOREAN',
-        'UD_NORWEGIAN',
-        'UD_PERSIAN',
-        'UD_POLISH',
-        'UD_PORTUGUESE',
-        'UD_ROMANIAN',
-        'UD_RUSSIAN',
-        'UD_SERBIAN',
-        'UD_SLOVAK',
-        'UD_SLOVENIAN',
-        'UD_SPANISH',
-        'UD_SWEDISH',
-        'UD_TURKISH']
+ALL_EVAL_TASKS = ['MNLI-mm', "QNLI"]
 
 
 shpley_removals = {
-    'UD_ARABIC': [0, 3, 7, 8, 11, 13, 16, 21, 29],
-    'UD_BASQUE': [17, 19],
-    'UD_BULGARIAN': [3, 19], #[3, 13, 17, 19],
-    'UD_CATALAN': [ 0, 3, 17, 19, 20],
-    'UD_CHINESE':[5, 13, 20, 25, 26],
-    'UD_CROATIAN': [13, 17, 19],
-    'UD_CZECH': [13, 17, 19],
-    'UD_DANISH': [13],
-    'UD_DUTCH': [17,19],
-    'UD_ENGLISH': [0, 3, 5, 6, 8, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 23, 24, 25, 26, 29],
-    'UD_FINNISH': [13, 17, 19], # need to check
-    'UD_FRENCH': [17],
-    'UD_GERMAN': [ 17, 19], # Try with [3, 5, 16, 17, 19, 20]
-    'UD_HEBREW': [17],
-    'UD_HINDI': [ 0, 17, 19],
-    'UD_INDONESIAN': [ 0, 13, 17, 19],
-    'UD_ITALIAN': [ 5, 17, 19, 20],
-    'UD_JAPANESE': [19],
-    'UD_KOREAN': [ 0, 13, 19],
-    'UD_NORWEGIAN': [0, 13, 19],
-    'UD_PERSIAN': [4, 17, 19],
-    'UD_POLISH': [13, 17, 19],
-    'UD_PORTUGUESE': [17],
-    'UD_ROMANIAN': [ 13, 17, 19],
-    'UD_RUSSIAN': [ 13, 17, 19],
-    'UD_SERBIAN': [ 13, 17, 19],
-    'UD_SLOVAK': [ 13, 17, 19],
-    'UD_SLOVENIAN': [17],
-    'UD_SPANISH':[5, 17, 19],
-    'UD_SWEDISH':[17],
-    'UD_TURKISH': [13, 17, 19]
-
+    'MNLI-mm': [2],
+    'QNLI': [0,2,3,4,5,6],
+    'SNLI': [0,1],
+    'QQP': [1]
 }
 
-all_acc_shapley = {eval_task_name:[] for eval_task_name in ALL_EVAL_TASKS}
-all_acc_baseline = {eval_task_name:[] for eval_task_name in ALL_EVAL_TASKS}
-all_acc_baseline_s = {eval_task_name:[] for eval_task_name in ALL_EVAL_TASKS}
+all_acc_shapley = {eval_task_name:[] for eval_task_name in list(shpley_removals.keys())}
+all_acc_baseline = {eval_task_name:[] for eval_task_name in list(shpley_removals.keys())}
+all_acc_baseline_s = {eval_task_name:[] for eval_task_name in list(shpley_removals.keys())}
 is_tune=True
 
 BASELINES_S = 'baseline-s'
@@ -119,66 +60,24 @@ BASELINES_S = 'baseline-s'
 if not is_tune: num_train_epochs=4.0
 
 
-for eval_task_name in ['UD_BULGARIAN']:
-    if len(shpley_removals[eval_task_name])<1: continue
+
+for eval_task_name in list(shpley_removals.keys()):
+    eval_data_size = 1200 if eval_task_name=="QNLI" else 2000
+
     for i in range(1):
         seed = 43
         np.random.seed(seed)
         for is_few_shot in [False]:
-            best_shapley_learning_rate = None
-            best_shapley_per_gpu_train_batch_size = None
-
-            best_baseline_learning_rate = None
-            best_baseline_per_gpu_train_batch_size = None
-
-            best_baseline_s_learning_rate = None
-            best_baseline_s_per_gpu_train_batch_size = None
-
-            BEST_BASELINE_ACC = None
-            BEST_SHAPLEY_ACC = None
-
-            for is_Shapley in [ BASELINES_S, True, False]:
-
+            for is_Shapley in [  True, False]:
                 best_learning_rate = None
                 best_per_gpu_train_batch_size = None
-                best_acc = -1
-
-                if BEST_BASELINE_ACC and BEST_SHAPLEY_ACC and BEST_BASELINE_ACC > BEST_SHAPLEY_ACC: continue
+                best_acc = 0
 
                 # _______________________________________________________________________
                 # ______________________________________NLPDV____________________________________
-                ALL_BINARY_TASKS = [
-                    'UD_ARABIC',
-                    'UD_BASQUE',
-                    'UD_BULGARIAN',
-                    'UD_CATALAN',
-                    'UD_CHINESE',
-                    'UD_CROATIAN',
-                    'UD_CZECH',
-                    'UD_DANISH',
-                    'UD_DUTCH',
-                    'UD_ENGLISH',
-                    'UD_FINNISH',
-                    'UD_FRENCH',
-                    'UD_GERMAN',
-                    'UD_HEBREW',
-                    'UD_HINDI',
-                    'UD_INDONESIAN',
-                    'UD_ITALIAN',
-                    'UD_JAPANESE',
-                    'UD_KOREAN',
-                    'UD_NORWEGIAN',
-                    'UD_PERSIAN',
-                    'UD_POLISH',
-                    'UD_PORTUGUESE',
-                    'UD_ROMANIAN',
-                    'UD_RUSSIAN',
-                    'UD_SERBIAN',
-                    'UD_SLOVAK',
-                    'UD_SLOVENIAN',
-                    'UD_SPANISH',
-                    'UD_SWEDISH',
-                    'UD_TURKISH']
+                ALL_BINARY_TASKS = ['snli', 'qqp', 'qnli', 'mnli-fiction', 'mnli-travel', 'mnli-slate',
+                                    'mnli-government',
+                                    'mnli-telephone']
 
                 DOMAIN_TRANSFER = True
 
@@ -190,11 +89,15 @@ for eval_task_name in ['UD_BULGARIAN']:
                     raddom_domains = np.random.choice(np.arange(len(ALL_BINARY_TASKS)), \
                                                   len(shpley_removals[eval_task_name]), replace=False)
 
-                learning_rates = [   2e-5, 3e-5, 5e-5]
-                bz_szs = [    16, 32]
+                if model_type=='bert': learning_rates = [ 2e-5 ]
+                elif  model_type=='xlm': learning_rates = [ 5e-4, 2e-4 ]
+                bz_szs = [  32]
 
                 for learning_rate in learning_rates:
                     for per_gpu_train_batch_size in bz_szs:
+
+                        # if eval_task_name == 'UD_BULGARIAN' and is_Shapley==True: continue
+
 
                         train_task_name = eval_task_name
                         if is_Shapley=='LOO': train_output_dir = 'temp/' + train_task_name + '_output_LOO_'+str(per_gpu_train_batch_size) + '_'+str(learning_rate) #+str(seed)+'/'
@@ -206,8 +109,6 @@ for eval_task_name in ['UD_BULGARIAN']:
                                 per_gpu_train_batch_size) + '_' + str(learning_rate)  #+str(seed)+'/'
                         else:
                             train_output_dir = 'temp/' + train_task_name + '_output_baseline_'+str(per_gpu_train_batch_size) + '_'+str(learning_rate)  #+str(seed)+'/'
-
-
 
                         eval_output_dir = train_output_dir +'/best'
 
@@ -247,12 +148,6 @@ for eval_task_name in ['UD_BULGARIAN']:
                                   'shapley removals: ', shpley_removals[eval_task_name], flush=True)
                             write_indices_to_delete(indices_to_delete_file_path, raddom_domains )
 
-                        # if is_Shapley == False and eval_task_name == 'UD_ENGLISH':
-                        #     write_indices_to_delete(indices_to_delete_file_path,\
-                        #     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29])
-
-                                # else is_Shapley: continue
-
 
 
                         run_command = "CUDA_VISIBLE_DEVICES=" + str(CUDA_VISIBLE_DEVICES[0])
@@ -281,22 +176,15 @@ for eval_task_name in ['UD_BULGARIAN']:
                                             train_output_dir + ' --model_name_or_path ' + train_model_name_or_path
 
 
-
+                        if is_few_shot : train_run_command += ' --is_few_shot'
                         if is_Shapley: train_run_command += ' --indices_to_delete_file_path ' + indices_to_delete_file_path
 
-                        if is_few_shot : train_run_command += ' --is_few_shot'
-
-
-                        command = train_run_command + ' --num_train_epochs 1'
-                        print(command, flush=True)
-
-                        # if eval_task_name=='UD_SPANISH' or not os.path.exists(os.path.join(eval_output_dir,"pytorch_model.bin")):
-                        #     os.system(command)
-
-                        # initial Eval on whole dataset
                         # For eval:
                         run_command = "CUDA_VISIBLE_DEVICES=" + str(CUDA_VISIBLE_DEVICES[0])
+
                         run_command += ' python '
+
+
                         run_command += ' ' + run_file + ' ' + ' --model_type ' + model_type + \
                                        ' --max_seq_length ' + str(max_seq_length) + ' --per_gpu_eval_batch_size=' + str(
                             per_gpu_eval_batch_size) + \
@@ -314,21 +202,26 @@ for eval_task_name in ['UD_BULGARIAN']:
                                            ' --data_dir ' + eval_data_dir + ' --output_dir ' + eval_output_dir + \
                                            ' --model_name_or_path ' + eval_output_dir
 
+                        command = train_run_command + ' --num_train_epochs 1'
+                        print(command, flush=True)
+
+                        # if not os.path.exists(os.path.join(directory, 'pytorch_model.bin')):\
+                        #     os.system(command)
+
+                        # initial Eval on whole dataset
                         command = eval_run_command
+                        if eval_data_size: command += ' --data_size ' + str(eval_data_size)
                         print(command, flush=True)
                         os.system(command)
 
-                        try:
-                            output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
-                            with open(output_eval_file, "r") as reader:
-                                for line in reader:
-                                    line = line.strip().split()
-                                    key = line[0]
-                                    value = line[-1]
-                                    if key in ['acc']:
-                                        acc = float(value)
-                        except:
-                            acc = 0
+                        output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
+                        with open(output_eval_file, "r") as reader:
+                            for line in reader:
+                                line = line.strip().split()
+                                key = line[0]
+                                value = line[-1]
+                                if key in ['acc']:
+                                    acc = float(value)
 
                         print('-'*100, flush=True)
                         print("Task: ", train_task_name, flush=True)
@@ -348,14 +241,14 @@ for eval_task_name in ['UD_BULGARIAN']:
                             best_learning_rate = learning_rate
                             best_acc=acc
 
-                print('-'*100, flush=True)
+                print('-' * 100, flush=True)
                 print('-Task: ', eval_task_name, flush=True)
                 print('-is_Shapley: ', is_Shapley, flush=True)
                 print('-best lr: ', best_learning_rate, '\n-bz sz: ', best_per_gpu_train_batch_size, \
                       '\n-best acc: ', best_acc, '\n-all_acc_shapley: ', all_acc_shapley, \
-                       '\n-all_acc_shapley_baseline_s: ',all_acc_baseline_s,'\n- all_acc_baseline: ', all_acc_baseline,  flush=True)
-                print('-'*100, flush=True)
-
+                      '\n-all_acc_shapley_baseline_s: ', all_acc_baseline_s, '\n- all_acc_baseline: ', all_acc_baseline,
+                      flush=True)
+                print('-' * 100, flush=True)
 
                 # For Test:
 
@@ -401,7 +294,7 @@ for eval_task_name in ['UD_BULGARIAN']:
 
                 train_run_command = run_command + ' --do_train --task_name ' + train_task_name + \
                                     ' --data_dir ' + train_data_dir + ' --output_dir ' + \
-                                    train_output_dir + ' --model_name_or_path ' + train_model_name_or_path
+                                    train_output_dir + ' --model_name_or_path ' + train_output_dir
 
                 # For eval:
 
@@ -420,19 +313,17 @@ for eval_task_name in ['UD_BULGARIAN']:
 
                 if overwrite_cache:
                     run_command += ' --overwrite_cache '
-                eval_run_command = run_command + ' --do_predict  --task_name ' + eval_task_name + \
+                eval_run_command = run_command + ' --do_eval  --task_name ' + eval_task_name + \
                                    ' --data_dir ' + eval_data_dir + ' --output_dir ' + eval_output_dir + \
                                    ' --model_name_or_path ' + eval_output_dir
 
                 indices_to_delete_file_path = eval_output_dir + '/indices_to_delete_file_path' + '.json'
                 if is_Shapley: train_run_command += ' --indices_to_delete_file_path ' + indices_to_delete_file_path
 
-
-                command = train_run_command + ' --num_train_epochs ' + str(num_train_epochs)
+                command = train_run_command + ' --num_train_epochs ' + str(num_train_epochs-1)
                 print(command, flush=True)
-                # if not (eval_task_name in ALL_EVAL_TASKS[21:22] and not is_Shapley):
-                #     os.system(command)
 
+                # os.system(command)
 
                 # initial Eval on whole dataset
                 command = eval_run_command
@@ -456,39 +347,12 @@ for eval_task_name in ['UD_BULGARIAN']:
                 print("Shapely: ", str(is_Shapley), flush=True)
                 print('-' * 100, flush=True)
 
-                if is_Shapley==True:
+                if is_Shapley == True:
                     best_shapley_learning_rate = best_learning_rate
                     best_shapley_per_gpu_train_batch_size = best_per_gpu_train_batch_size
-                    BEST_SHAPLEY_ACC = acc
-                elif is_Shapley==BASELINES_S:
+                elif is_Shapley == BASELINES_S:
                     best_baseline_s_learning_rate = best_learning_rate
                     best_baseline_s_per_gpu_train_batch_size = best_per_gpu_train_batch_size
                 else:
                     best_baseline_learning_rate = best_learning_rate
                     best_baseline_per_gpu_train_batch_size = best_per_gpu_train_batch_size
-                    BEST_BASELINE_ACC = acc
-
-
-            best_shapley_dir  = 'temp/'+eval_task_name+'_output_Shapley_'+str(best_shapley_per_gpu_train_batch_size)+'_'+\
-                   str(best_shapley_learning_rate)+'/best/'
-            gold = best_shapley_dir+'test_gold.txt'
-            shapley = best_shapley_dir+'test_predictions.txt'
-            baseline = 'temp/'+eval_task_name+'_output_baseline_'+str(best_baseline_per_gpu_train_batch_size)+'_'+\
-                   str(best_baseline_learning_rate)+'/best/'+'test_predictions.txt'
-            baseline_s = 'temp/'+eval_task_name+'_output_baseline-s_'+str(best_baseline_s_per_gpu_train_batch_size)+'_'+\
-                   str(best_baseline_s_learning_rate)+'/best/'+'test_predictions.txt'
-
-            print('-'*100, flush=True)
-            print('Boostrap paired test of Shapley woth baseline!', flush=True)
-            command = "python script_t_test.py "+ gold + ' '+ shapley + ' ' + baseline
-            print(command, flush=True)
-            print('-' * 50, flush=True)
-            os.system(command)
-            print('-' * 50, flush=True)
-            print('-' * 50, flush=True)
-            print('Boostrap paired test of Shapley woth baseline-s!', flush=True)
-            command = "python script_t_test.py " + gold + ' ' + shapley + ' ' + baseline_s
-            print(command, flush=True)
-            print('-' * 50, flush=True)
-            os.system(command)
-            print('-' * 100, flush=True)

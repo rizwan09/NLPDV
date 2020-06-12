@@ -30,9 +30,9 @@ run_file = './examples/run_sglue.py'
 model_type = 'bert'
 train_model_name_or_path = 'bert-base-cased'
 do_lower_case = False
-num_train_epochs = 1.0
+num_train_epochs = 4.0
 num_eval_epochs = 2.0
-per_gpu_eval_batch_size =  32
+per_gpu_eval_batch_size =  1
 per_gpu_train_batch_size = 32
 learning_rate = 6e-5
 max_seq_length = 128
@@ -81,11 +81,11 @@ is_tune=True
 
 if not is_tune: num_train_epochs=3.0
 
-for eval_task_name in ['QNLI']:
+for eval_task_name in ['MNLI-mm']:
     train_task_name = eval_task_name
-    for is_Shapley in [True]:
-        for learning_rate in [ 5e-5]:
-            for per_gpu_train_batch_size in [32]:
+    for is_Shapley in [True, False]:
+        for learning_rate in [ 3e-5, 2e-5, 5e-5]:
+            for per_gpu_train_batch_size in [16, 32]:
                 if learning_rate == 5e-5 and  per_gpu_train_batch_size == 32 and is_Shapley==False and eval_task_name=='QNLI': continue
                 if eval_task_name=='QNLI' and is_Shapley=='LOO': learning_rate=3e-5
                 if eval_task_name=='MNLI-mm' and is_Shapley!='LOO': continue

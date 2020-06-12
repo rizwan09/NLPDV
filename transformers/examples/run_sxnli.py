@@ -20,7 +20,7 @@
 import argparse
 import glob
 import logging
-import os
+import os, json
 import random
 import pdb
 
@@ -145,20 +145,20 @@ def train(args, train_dataset, model, tokenizer):
     logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
     logger.info("  Total optimization steps = %d", t_total)
 
-    global_step = 0
+    global_step = args.global_steps if args.global_steps>0 else  0
     epochs_trained = 0
     steps_trained_in_current_epoch = 0
     # Check if continuing training from a checkpoint
-    if os.path.exists(args.model_name_or_path):
-        # set global_step to gobal_step of last saved checkpoint from model path
-        global_step = int(args.model_name_or_path.split("-")[-1].split("/")[0])
-        epochs_trained = global_step // (len(train_dataloader) // args.gradient_accumulation_steps)
-        steps_trained_in_current_epoch = global_step % (len(train_dataloader) // args.gradient_accumulation_steps)
-
-        logger.info("  Continuing training from checkpoint, will skip to saved global_step")
-        logger.info("  Continuing training from epoch %d", epochs_trained)
-        logger.info("  Continuing training from global step %d", global_step)
-        logger.info("  Will skip the first %d steps in the first epoch", steps_trained_in_current_epoch)
+    # if os.path.exists(args.model_name_or_path) and global_step>0:
+    #     # set global_step to gobal_step of last saved checkpoint from model path
+    #     global_step = int(args.model_name_or_path.split("-")[-1].split("/")[0])
+    #     epochs_trained = global_step // (len(train_dataloader) // args.gradient_accumulation_steps)
+    #     steps_trained_in_current_epoch = global_step % (len(train_dataloader) // args.gradient_accumulation_steps)
+    #
+    #     logger.info("  Continuing training from checkpoint, will skip to saved global_step")
+    #     logger.info("  Continuing training from epoch %d", epochs_trained)
+    #     logger.info("  Continuing training from global step %d", global_step)
+    #     logger.info("  Will skip the first %d steps in the first epoch", steps_trained_in_current_epoch)
 
     tr_loss, logging_loss = 0.0, 0.0
     model.zero_grad()
@@ -166,8 +166,11 @@ def train(args, train_dataset, model, tokenizer):
         epochs_trained, int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0]
     )
     set_seed(args)  # Added here for reproductibility
+    best_eval_acc = 0
     for _ in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
+        args.logging_steps = len(train_dataloader)
+        args.save_steps = len(train_dataloader)
         for step, batch in enumerate(epoch_iterator):
             # Skip past any already trained steps if resuming training
             if steps_trained_in_current_epoch > 0:
@@ -209,29 +212,54 @@ def train(args, train_dataset, model, tokenizer):
 
                 if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
                     # Log metrics
+                    logs = {}
                     if (
-                        args.local_rank == -1 and args.evaluate_during_training
+                        args.local_rank in [ -1, 0] and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
                         results = evaluate(args, model, tokenizer)
                         for key, value in results.items():
                             tb_writer.add_scalar("eval_{}".format(key), value, global_step)
+                        for key, value in results.items():
+                            eval_key = "eval_{}".format(key)
+                            logs[eval_key] = value
                     tb_writer.add_scalar("lr", scheduler.get_lr()[0], global_step)
                     tb_writer.add_scalar("loss", (tr_loss - logging_loss) / args.logging_steps, global_step)
                     logging_loss = tr_loss
 
-                if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0:
+                if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0 and args.evaluate_during_training:
                     # Save model checkpoint
-                    output_dir = os.path.join(args.output_dir, "checkpoint-{}".format(global_step))
+                    output_dir = os.path.join(args.output_dir, "best")
                     if not os.path.exists(output_dir):
                         os.makedirs(output_dir)
-                    model_to_save = (
-                        model.module if hasattr(model, "module") else model
-                    )  # Take care of distributed/parallel training
-                    model_to_save.save_pretrained(output_dir)
-                    tokenizer.save_pretrained(output_dir)
+                    if not os.path.exists(args.output_dir):
+                        os.makedirs(args.output_dir)
+                    if logs["eval_acc"] > best_eval_acc:
 
-                    torch.save(args, os.path.join(output_dir, "training_args.bin"))
-                    logger.info("Saving model checkpoint to %s", output_dir)
+                        print(json.dumps({**logs, **{"step": global_step, "msg": "New dev found continuing", \
+                                                     "epoch": global_step / args.save_steps,\
+                                                     'logs["eval_acc"] > best_eval_acc':\
+                                                         str( logs["eval_acc"] > best_eval_acc),
+                                                     'logs["eval_acc"]': logs["eval_acc"],
+                                                     'best_eval_acc': best_eval_acc
+                                                     }}), flush=True)
+                        best_eval_acc = logs["eval_acc"]
+                        model_to_save = (
+                            model.module if hasattr(model, "module") else model
+                        )  # Take care of distributed/parallel training
+                        model_to_save.save_pretrained(output_dir)
+                        tokenizer.save_pretrained(output_dir)
+
+                        torch.save(args, os.path.join(output_dir, "training_args.bin"))
+                        logger.info("Saving model checkpoint to %s", output_dir)
+                    else:
+                        print(json.dumps({**logs, **{"step": global_step, "msg": "SHOULD EARLY STOP but continuing!!", \
+                                                     "epoch": global_step / args.save_steps, \
+                                                     'logs["eval_acc"] > best_eval_acc': str(
+                                                         logs["eval_acc"] > best_eval_acc),
+                                                     'logs["eval_acc"]': logs["eval_acc"],
+                                                     'best_eval_acc': best_eval_acc}}),
+                              flush=True)
+                        break
 
                     torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
@@ -517,10 +545,17 @@ def main():
         type=int,
         help="If > 0: set total number of training steps to perform. Override num_train_epochs.",
     )
+    parser.add_argument(
+        "--global_steps",
+        default=-1,
+        type=int,
+        help="If > 0: set total number of training steps already performed. Override num_train_epochs.",
+    )
+
     parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
 
-    parser.add_argument("--logging_steps", type=int, default=500, help="Log every X updates steps.")
-    parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every X updates steps.")
+    parser.add_argument("--logging_steps", type=int, default=50000, help="Log every X updates steps.")
+    parser.add_argument("--save_steps", type=int, default=500000000, help="Save checkpoint every X updates steps.")
     parser.add_argument(
         "--eval_all_checkpoints",
         action="store_true",
@@ -717,6 +752,8 @@ def main():
             logger.info("***** Writig Training dataset size  {} *****")
             logger.info("%s = %s\n" % ('n_points', n_train_points))
             writer.write("%s = %s\n" % ('n_points', n_train_points))
+            logger.info("%s = %s\n" % ('global_step', global_step))
+            writer.write("%s = %s\n" % ('global_step', global_step))
 
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):

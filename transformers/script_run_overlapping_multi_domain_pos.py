@@ -48,7 +48,7 @@ cluster_size = 10
 cluster_num = train_data_size // cluster_size
 # Seed
 seed = 43
-max_iter = 30
+max_iter = 46
 save_every = 1
 # total _iter = max_iter x save_every
 tolerance = 0.2
@@ -68,7 +68,7 @@ g_run = False
 load_removing_performance_plot = load_adding_performance_plot = True
 
 overwrite_directory = False
-load_shapley = False # True when just load shapley's when to plot only
+load_shapley = True # True when just load shapley's when to plot only
 
 ALL_EVAL_TASKS = [
         'UD_ARABIC',
@@ -106,8 +106,29 @@ ALL_EVAL_TASKS = [
 small_performance_dict = {eval_task_name: {} for eval_task_name in ALL_EVAL_TASKS}
 full_performance_dict = {eval_task_name: {} for eval_task_name in ALL_EVAL_TASKS}
 
+'''sorted_dict  = ['UD_ENGLISH', 'UD_NORWEGIAN', 'UD_SWEDISH', 'UD_FRENCH', 'UD_PORTUGUESE',  'UD_DANISH',  'UD_SPANISH', 'UD_ITALIAN', 'UD_CROATIAN', 'UD_CATALAN', 'UD_POLISH', 'UD_SLOVENIAN', 'UD_DUTCH', 'UD_BULGARIAN', 'UD_RUSSIAN', 'UD_GERMAN',  'UD_HEBREW', 'UD_CZECH', 'UD_ROMANIAN', 'UD_SLOVAK', 'UD_INDONESIAN', 'UD_FINNISH', 'UD_CHINESE', 'UD_ARABIC', 'UD_KOREAN', 'UD_HINDI', 'UD_JAPANESE',]
+sorted_idx = [ALL_BINARY_TASKS.index(lang) for lang in sorted_dict] = 
+sorted_idx = [18, 28, 10, 21, 7, 27, 15, 5, 3, 20, 26, 8, 2, 23, 11, 12, 6, 22, 25, 14, 9, 4, 0, 17, 13, 16]
+for english:
+sorted_vals = [vals_tmc[i] for i in sorted_idx]
+sorted_vals = [-0.006211180124223614, 0.0023291925465838137, 0.009522381037482264, 0.0027173913043477826, 0.0036503904326672387, 0.008540372670807428, -0.0031055900621118626, 0.009522381037482264, 0.010696779158445247, 0.00776397515527949, -0.0011645962732920179, 0.003063191372185692, 0.015394371642297289, -0.0011645962732920179, 0.00012719606977817932, 0.0019409937888198447, -0.0016344011116663504, 0.0019409937888198447, -0.0042701863354037695, 0.013586956521739135, 0.0013015941907411621, 0.013045575400371212, 0.0, -0.005434782608695676, 0.00038819875776396895, -0.005822981366459645]
 
-for eval_task_name in ALL_EVAL_TASKS[25:]:
+
+for French:
+sorted_dict  = ['UD_ENGLISH', 'UD_NORWEGIAN', 'UD_SWEDISH', , 'UD_PORTUGUESE',  'UD_DANISH',  'UD_SPANISH', 'UD_ITALIAN', 'UD_CROATIAN', 'UD_CATALAN', 'UD_POLISH', 'UD_SLOVENIAN', 'UD_DUTCH', 'UD_BULGARIAN', 'UD_RUSSIAN', 'UD_GERMAN',  'UD_HEBREW', 'UD_CZECH', 'UD_ROMANIAN', 'UD_SLOVAK', 'UD_INDONESIAN', 'UD_FINNISH', 'UD_CHINESE', 'UD_ARABIC', 'UD_KOREAN', 'UD_HINDI', 'UD_JAPANESE',]
+sorted_idx = [ALL_BINARY_TASKS.index(lang) for lang in sorted_dict] = 
+sorted_idx = [9, 18, 28, 21, 7, 27, 15, 5, 3, 20, 26, 8, 2, 23, 11, 12, 6, 22, 25, 14, 9, 4, 0, 17, 13, 16]
+sorted_vals = [0.000417816166190077, 0.000417816166190077, 0.0010799581956554283, 0.0017421002251207796, -0.00040986137064158434, 0.00025228065882376693, 0.004556203850348384, -0.0007409323853742045, 0.0015765647177544695, 0.0005833516735563871, -0.00040986137064158434, -0.00024432586327516326, -0.0007409323853742045, -0.00040986137064158434, -0.00024432586327516326, 0.000417816166190077, -7.87903559088532e-05, 0.002569777761952441, 0.0015765647177544695, 0.0005833516735563871, 0.000417816166190077, -0.0005753968780078944, -0.0020802995631370447, -0.00024432586327516326, 0.0010799581956554283, 8.674515145745687e-05]
+
+For Hindi:
+sorted_vals = [0.003972612796957153, 0.008361970217640291, 0.006071019473081307, 0.0006872852233676952, 0.0005267134172191046, 0.006758304696449002, 0.006758304696449002, 0.0015604832311405525, 0.003455727889996485, 0.00572737686139746, 0.0019473081328751363, 0.010519821618459657, 0.010519821618459657, 0.009049255441007986, 0.001388188262153589, 0.008934707903780037, 0.0032834329210096325, 0.0027491408934707806, 0.00572737686139746, 0.008018327605956443, 0.003972612796957153, 0.0025942530450620005, -0.006758304696449002, 0.01122565864833902, 0.02164948453608251]
+
+
+'''
+# sorted_idx = [9, 18, 28, 21, 7, 27, 15, 5, 3, 20, 26, 8, 2, 23, 11, 12, 6, 22, 25, 14, 9, 4, 0, 17, 13, 16]
+
+
+for eval_task_name in :
 
     train_task_name = eval_task_name
 
@@ -116,6 +137,9 @@ for eval_task_name in ALL_EVAL_TASKS[25:]:
     print('-' * 50, flush=True)
     train_output_dir = 'temp/' + train_task_name + '_output_overlapping_ftmc/'  # +str(seed)+'/'
     eval_output_dir = 'temp/' + eval_task_name + '_output_overlapping_ftmc/'  # +str(seed)+'/'
+    if seed!=43:
+        train_output_dir = train_output_dir[:-1]+'_seed_'+str(seed)
+        eval_output_dir = train_output_dir
     loo_run = True
 
     directory = train_output_dir
@@ -163,6 +187,8 @@ for eval_task_name in ALL_EVAL_TASKS[25:]:
     if eval_task_name in ALL_BINARY_TASKS: ALL_BINARY_TASKS.remove(eval_task_name)
     if DOMAIN_TRANSFER:
         sources = np.arange(len(ALL_BINARY_TASKS))
+
+
 
     if load_shapley:
         tmc_run = False
@@ -333,7 +359,8 @@ for eval_task_name in ALL_EVAL_TASKS[25:]:
 
     def save_results(directory, vals_loo, tmc_number, mem_tmc, idxs_tmc, \
                      g_number=None, mem_g=None, idxs_g=None, sources=None, overwrite=False, n_points=None, tol=None, \
-                     baseline_value=None, random_score=None, mean_score=None):
+                     baseline_value=None, random_score=None, mean_score=None, small_performance_dict=small_performance_dict, \
+                     full_performance_dict=full_performance_dict):
         """Saves results computed so far."""
         if directory is None:
             return
@@ -1102,18 +1129,19 @@ for eval_task_name in ALL_EVAL_TASKS[25:]:
         data = pkl.load(open(performance_dir, 'rb'))
         small_performance_dict = data['small_performance_dict']
         full_performance_dict = data['full_performance_dict']
-
+    else:
+        print('No file at: ', performance_dir, flush=True)
     # print("Begining of run: small_performance_dict: ", small_performance_dict, 'full_performance_dict:',
     #       full_performance_dict, flush=True)
 
     single_mems = {lang: small_performance_dict[eval_task_name][lang] for lang in ALL_BINARY_TASKS if
                    lang in small_performance_dict[eval_task_name]}
     print(single_mems)
-    best_single_comb = {k: v for k, v in single_mems.items() if v == max(single_mems.values())}
+    best_single_comb = {k: v for k, v in small_performance_dict[eval_task_name].items() if v == max(small_performance_dict[eval_task_name].values())}
     best_single = {k: v for k, v in single_mems.items() if v == max(single_mems.values())}
-    best_single_id = ALL_BINARY_TASKS.index(list(best_single.keys())[0])
-    print("Best single: ", best_single, " id: ", best_single_id)
-
+    # best_single_id = ALL_BINARY_TASKS.index(list(best_single.keys())[0])
+    # print("Best single: ", best_single, " id: ", best_single_id)
+    # pdb.set_trace()
 
     try:
         baseline_value
@@ -1166,7 +1194,8 @@ for eval_task_name in ALL_EVAL_TASKS[25:]:
                         mean_score = float(value)
 
     # lst = {task: max(small_performance_dict[task].values()) for task in ALL_EVAL_TASKS}
-    # random_score =  baseline_value/2 if lst[eval_task_name]-baseline_value<0.5 else 0.5
+    # baseline_value = 0.7523291925465838
+    random_score = baseline_value/2
     mean_score = baseline_value
 
     single_mems = {lang: small_performance_dict[eval_task_name][lang] for lang in ALL_BINARY_TASKS if
@@ -1175,7 +1204,9 @@ for eval_task_name in ALL_EVAL_TASKS[25:]:
     loo_mems = {'_'.join([id for id in ALL_BINARY_TASKS if id != lang]): small_performance_dict[eval_task_name][
         '_'.join([id for id in ALL_BINARY_TASKS if id != lang])] for lang in ALL_BINARY_TASKS}
 
-    if eval_task_name=='UD_GERMAN':
+
+
+    if eval_task_name in ['UD_GERMAN' , 'UD_SLOVAK', 'UD_SERBIAN' ]:
         print('random score updated from: ', random_score, ' to: ')
         random_score = np.array(list(single_mems.values()) + [baseline_value] ).mean()
         print(random_score)
@@ -1183,6 +1214,7 @@ for eval_task_name in ALL_EVAL_TASKS[25:]:
         print('random score updated from: ', random_score,' to: ')
         random_score = baseline_value
         print( random_score )
+
 
 
 
@@ -1305,7 +1337,7 @@ for eval_task_name in ALL_EVAL_TASKS[25:]:
             if directory is not None:
                 if tmc_run:
                     print(f'Saving TMC Shapley after iteration {iter_counter}', flush=True)
-                    save_results(directory, vals_loo, tmc_number, mem_tmc, idxs_tmc)
+                    save_results(directory, vals_loo, tmc_number, mem_tmc, idxs_tmc, small_performance_dict=small_performance_dict)
                 if g_run: pdb.set_trace()
 
         print(f'error now{error(mem_tmc)}< err{err}: {err}')
@@ -1354,7 +1386,7 @@ for eval_task_name in ALL_EVAL_TASKS[25:]:
     best_single_id = ALL_BINARY_TASKS.index(list(best_single.keys())[0])
     print("Best single: ", best_single, " id: ", best_single_id)
 
-    threshold = 0.1
+    threshold = 0.001 if eval_task_name!= 'UD_ENGLISH' else 0.01
 
     pos_ids = [i for i in range(len(vals_tmc)) if vals_tmc[i]>=threshold]
     confusion_ids = [i for i in range(len(vals_tmc)) if vals_tmc[i]<threshold and vals_tmc[i]>=0]
@@ -1372,17 +1404,6 @@ for eval_task_name in ALL_EVAL_TASKS[25:]:
     print('Remove LOO source ids: ', remove_loo_ids, " names: ", ' '.join([ALL_BINARY_TASKS[id] for id in remove_loo_ids]) )
 
 
-    # with open('code_snippet2.txt', 'a') as code_f:
-    #     code_f.write("if is_Shapley == True and eval_task_name == '"+eval_task_name+"':\n \t \
-    #     write_indices_to_delete(indices_to_delete_file_path,"+ str(remove_shapley_ids) +')\n')
-    #
-    #     code_f.write("if is_Shapley == 'LOO' and eval_task_name == '" + eval_task_name + "':\n \t \
-    #             write_indices_to_delete(indices_to_delete_file_path," + str(remove_loo_ids) + ')\n')
-    #
-    #     if list(best_single.values())[0]>baseline_value:
-    #         print(" Baseline is lower than best_single: ", eval_task_name)
-    #         code_f.write("if is_Shapley == 'BEST_SINGLE' and eval_task_name == '" + eval_task_name + "':\n \t \
-    #             write_indices_to_delete(indices_to_delete_file_path," + str([ i for i in range(len(ALL_BINARY_TASKS)) if i!=best_single_id]) + ")\n")
 
     pdb.set_trace()
     del baseline_value, perfs, data, sources

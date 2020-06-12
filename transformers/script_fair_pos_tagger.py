@@ -20,7 +20,7 @@ import shutil
 
 ALL_POS_DOMAINS = 'wsj_emails_newsgroups_answers_reviews_weblogs'.split('_')
 ALL_POS_ALL_CORPUS = {}
-target_domains = ['emails']
+target_domains = ['answers']
 
 loo_run = True
 tmc_run = True
@@ -28,9 +28,9 @@ g_run = False
 load_removing_performance_plot = load_adding_performance_plot = True
 
 overwrite_directory = False  # True when just load shapley's when to plot only
-load_shapley = False
+load_shapley = True
 
-train_data_size = 2000 # For full_training set None
+train_data_size = None #2000 # For full_training set None
 num_train_epochs = 150
 seed = 43
 err = 0.1
@@ -867,12 +867,12 @@ for target_domain in target_domains:
 
 
     # Must be set after one run
-    single_mems = {lang: small_performance_dict[target_domain][lang] for lang in ALL_POS_DOMAINS if
-                   lang in small_performance_dict[target_domain]}
-    loo_mems = {'_'.join([id for id in source_names if id != lang]): small_performance_dict[target_domain][
-        '_'.join([id for id in source_names if id != lang])] for lang in source_names}
-
-    random_score = np.array(list(single_mems.values()) ).mean()
+    # single_mems = {lang: small_performance_dict[target_domain][lang] for lang in ALL_POS_DOMAINS if
+    #                lang in small_performance_dict[target_domain]}
+    # loo_mems = {'_'.join([id for id in source_names if id != lang]): small_performance_dict[target_domain][
+    #     '_'.join([id for id in source_names if id != lang])] for lang in source_names}
+    #
+    # random_score = np.array(list(single_mems.values()) ).mean()
 
     mem_tmc = np.zeros((0,
                         n_points))  # (n_iter x n_points) #n_iter is basically n_(save_every) which can be a high value and it's not epoch
