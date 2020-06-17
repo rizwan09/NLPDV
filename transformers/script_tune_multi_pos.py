@@ -16,7 +16,7 @@ from tqdm import trange, tqdm
 # ______________________________________NLPDV____________________________________
 
 #gpu 0,2 on NLP9 are culprit gpu 3,4 on nlp8
-CUDA_VISIBLE_DEVICES = [1,3,4,5,6,7]
+CUDA_VISIBLE_DEVICES = [0,1,3,4,5,6,7]
 
 BASE_DATA_DIR = '/local/rizwan/UDTree/'
 run_file = './examples/run_multi_domain_pos.py'
@@ -85,7 +85,7 @@ shpley_removals = {
     'UD_DANISH': [13],
     'UD_DUTCH': [17,19],
     'UD_ENGLISH': [0, 3, 5, 6, 8, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 23, 24, 25, 26, 29],
-    'UD_FINNISH': [13, 17, 19], # need to check
+    'UD_FINNISH': [13, 17, 19],
     'UD_FRENCH': [17],
     'UD_GERMAN': [ 17, 19], # Try with [3, 5, 16, 17, 19, 20]
     'UD_HEBREW': [17],
@@ -119,7 +119,7 @@ BASELINES_S = 'baseline-s'
 if not is_tune: num_train_epochs=4.0
 
 
-for eval_task_name in ['UD_BULGARIAN']:
+for eval_task_name in ['UD_FINNISH']:
     if len(shpley_removals[eval_task_name])<1: continue
     for i in range(1):
         seed = 43
@@ -137,7 +137,7 @@ for eval_task_name in ['UD_BULGARIAN']:
             BEST_BASELINE_ACC = None
             BEST_SHAPLEY_ACC = None
 
-            for is_Shapley in [ BASELINES_S, True, False]:
+            for is_Shapley in [ BASELINES_S,]:
 
                 best_learning_rate = None
                 best_per_gpu_train_batch_size = None
@@ -190,7 +190,7 @@ for eval_task_name in ['UD_BULGARIAN']:
                     raddom_domains = np.random.choice(np.arange(len(ALL_BINARY_TASKS)), \
                                                   len(shpley_removals[eval_task_name]), replace=False)
 
-                learning_rates = [   2e-5, 3e-5, 5e-5]
+                learning_rates = [  2e-5, 3e-5, 5e-5]
                 bz_szs = [    16, 32]
 
                 for learning_rate in learning_rates:
@@ -290,8 +290,8 @@ for eval_task_name in ['UD_BULGARIAN']:
                         command = train_run_command + ' --num_train_epochs 1'
                         print(command, flush=True)
 
-                        # if eval_task_name=='UD_SPANISH' or not os.path.exists(os.path.join(eval_output_dir,"pytorch_model.bin")):
-                        #     os.system(command)
+                        if not os.path.exists(os.path.join(eval_output_dir,"pytorch_model.bin")):
+                            os.system(command)
 
                         # initial Eval on whole dataset
                         # For eval:
@@ -430,8 +430,8 @@ for eval_task_name in ['UD_BULGARIAN']:
 
                 command = train_run_command + ' --num_train_epochs ' + str(num_train_epochs)
                 print(command, flush=True)
-                # if not (eval_task_name in ALL_EVAL_TASKS[21:22] and not is_Shapley):
-                #     os.system(command)
+
+                os.system(command)
 
 
                 # initial Eval on whole dataset
