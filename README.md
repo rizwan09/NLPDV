@@ -3,7 +3,7 @@
 ### NOTE
 
 - We perform efficient tranfer learning using Data Shapley method. 
-- Our Codebase added previous snapshots of [allennlp](https://github.com/allenai/allennlp) and [Huggingface Transformers](https://github.com/huggingface/transformers). 
+- Our Codebase added previous snapshots of [allennlp](https://github.com/allenai/allennlp), [Huggingface Transformers](https://github.com/huggingface/transformers) and [a previous Shapley value implemenattion](https://github.com/amiratag/DataShapley). 
 
 ### Requirements
 
