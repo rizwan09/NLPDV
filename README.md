@@ -39,9 +39,5 @@ $  CUDA_VISIBLE_DEVICES=7 python run_flair.py &>> log/weblogs_baseline.txt &
 
 - Modify the gpu ids in CUDA_VISISBLE_DEVICES in [script_run_sglue.py](https://github.com/rizwan09/NLPDV/blob/master/transformers/script_run_sglue.py)
 
-### Results
-
-[Google Spreadsheet](https://docs.google.com/spreadsheets/d/1SE5wuhJtb070C--nbBrMWaj8JI0wwk0v2EiIqPMOfc4/edit?usp=sharing)
-
 
 
