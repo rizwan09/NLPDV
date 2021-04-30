@@ -39,5 +39,14 @@ $  CUDA_VISIBLE_DEVICES=7 python run_flair.py &>> log/weblogs_baseline.txt &
 
 - Modify the gpu ids in CUDA_VISISBLE_DEVICES in [script_run_sglue.py](https://github.com/rizwan09/NLPDV/blob/master/transformers/script_run_sglue.py)
 
+### Citation
 
+```
+@inproceedings{parvez2021evaluating,
+  title = {Evaluating the Values of Sources in Transfer Learning},
+  author = {Parvez, Md Rizwan and Chang, Kai-Wei},
+  booktitle = {Proceedings of the 2021 Conference of the North {A}merican Chapter of the Association for Computational Linguistics},
+  year = {2021}
+}
+```
 
